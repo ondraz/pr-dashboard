@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%233fb950'><path d='M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z'/></svg>">
+    <title>My Open PRs</title>
+    <style>
+        :root {
+            --color-bg: #ffffff;
+            --color-bg-secondary: #f6f8fa;
+            --color-border: #d0d7de;
+            --color-text: #1f2328;
+            --color-text-secondary: #656d76;
+            --color-link: #0969da;
+            --color-open: #1a7f37;
+            --color-draft: #656d76;
+            --color-accent: #0969da;
+            --color-btn-text: #fff;
+            --color-error-bg: #ffebe9;
+            --color-error-border: #d1242f;
+            --color-error-text: #82071e;
+            --color-review-approved-bg: #dafbe1;
+            --color-review-approved-border: #aceebb;
+            --color-review-changes-bg: #fff8c5;
+            --color-review-changes-text: #9a6700;
+            --color-review-changes-border: #d4a72c;
+            --color-ci-failure: #cf222e;
+            --color-ci-pending: #9a6700;
+            --color-stack-accent: #8250df;
+            --color-stack-rail: #afb8c1;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-bg: #0d1117;
+                --color-bg-secondary: #161b22;
+                --color-border: #30363d;
+                --color-text: #e6edf3;
+                --color-text-secondary: #8b949e;
+                --color-link: #58a6ff;
+                --color-open: #3fb950;
+                --color-draft: #8b949e;
+                --color-accent: #1f6feb;
+                --color-btn-text: #fff;
+                --color-error-bg: #3d1f20;
+                --color-error-border: #6e3630;
+                --color-error-text: #f0a8a8;
+                --color-review-approved-bg: #1a3a1a;
+                --color-review-approved-border: #2a5a2a;
+                --color-review-changes-bg: #3d2e00;
+                --color-review-changes-text: #d29922;
+                --color-review-changes-border: #5a4300;
+                --color-ci-failure: #f85149;
+                --color-ci-pending: #d29922;
+                --color-stack-accent: #a371f7;
+                --color-stack-rail: #3d444d;
+            }
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+            background: var(--color-bg);
+            color: var(--color-text);
+            line-height: 1.5;
+        }
+
+        .header {
+            background: var(--color-bg-secondary);
+            border-bottom: 1px solid var(--color-border);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .pr-count {
+            background: var(--color-accent);
+            color: var(--color-btn-text);
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .refresh-btn {
+            background: none;
+            border: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .refresh-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text); }
+
+        .interval-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .interval-bar span {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .interval-btn {
+            background: none;
+            border: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .interval-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text); }
+        .interval-btn.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-btn-text); }
+
+        .last-updated {
+            font-size: 11px;
+            color: var(--color-text-secondary);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .setup {
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+
+        .setup label {
+            display: block;
+            font-size: 14px;
+            margin-bottom: 8px;
+            color: var(--color-text-secondary);
+        }
+
+        .setup-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        .setup input {
+            flex: 1;
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            color: var(--color-text);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .setup input:focus { outline: none; border-color: var(--color-accent); }
+
+        .setup button {
+            background: var(--color-accent);
+            color: var(--color-btn-text);
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .setup button:hover { opacity: 0.9; }
+
+        .remember-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            white-space: nowrap;
+            cursor: pointer;
+        }
+
+        .repo-group {
+            border: 1px solid var(--color-border);
+            border-radius: 6px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .repo-header {
+            background: var(--color-bg-secondary);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .repo-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--color-text-secondary);
+        }
+
+        .repo-name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .repo-name a {
+            color: var(--color-link);
+            text-decoration: none;
+        }
+
+        .repo-name a:hover { text-decoration: underline; }
+
+        .repo-pr-count {
+            color: var(--color-text-secondary);
+            font-size: 12px;
+            background: var(--color-bg);
+            padding: 1px 8px;
+            border-radius: 20px;
+            margin-left: auto;
+        }
+
+        .pr-item {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--color-border);
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .pr-item:last-child { border-bottom: none; }
+
+        .pr-status {
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .pr-status svg { width: 16px; height: 16px; }
+        .pr-status.open svg { color: var(--color-open); }
+        .pr-status.draft svg { color: var(--color-draft); }
+
+        .pr-info { flex: 1; min-width: 0; }
+
+        .pr-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .pr-title a {
+            color: var(--color-text);
+            text-decoration: none;
+        }
+
+        .pr-title a:hover { color: var(--color-link); }
+
+        .pr-meta {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            margin-top: 4px;
+        }
+
+        .pr-labels {
+            display: inline-flex;
+            gap: 4px;
+            margin-left: 8px;
+        }
+
+        .pr-label {
+            font-size: 11px;
+            padding: 1px 8px;
+            border-radius: 20px;
+            font-weight: 500;
+            border: 1px solid transparent;
+        }
+
+        .draft-badge {
+            font-size: 11px;
+            color: var(--color-draft);
+            border: 1px solid var(--color-border);
+            padding: 1px 8px;
+            border-radius: 20px;
+            margin-left: 6px;
+        }
+
+        .pr-updated {
+            flex-shrink: 0;
+            font-size: 12px;
+            color: var(--color-text-secondary);
+            text-align: right;
+            min-width: 80px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 48px;
+            color: var(--color-text-secondary);
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--color-border);
+            border-top-color: var(--color-accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .error {
+            background: var(--color-error-bg);
+            border: 1px solid var(--color-error-border);
+            color: var(--color-error-text);
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 48px;
+            color: var(--color-text-secondary);
+            font-size: 14px;
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+
+        .filter-btn {
+            background: none;
+            border: 1px solid var(--color-border);
+            color: var(--color-text-secondary);
+            padding: 5px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .filter-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text); }
+        .filter-btn.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-btn-text); }
+
+        .review-status {
+            flex-shrink: 0;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-weight: 500;
+        }
+
+        .review-approved { background: var(--color-review-approved-bg); color: var(--color-open); border: 1px solid var(--color-review-approved-border); }
+        .review-changes { background: var(--color-review-changes-bg); color: var(--color-review-changes-text); border: 1px solid var(--color-review-changes-border); }
+        .review-pending { background: var(--color-bg); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+
+        .stack-group {
+            box-shadow: inset 3px 0 0 var(--color-stack-accent);
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .stack-group:last-child { border-bottom: none; }
+
+        .stack-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 16px 0;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: var(--color-stack-accent);
+        }
+
+        .stack-header svg { width: 12px; height: 12px; flex-shrink: 0; }
+
+        .stack-onto {
+            color: var(--color-text-secondary);
+            font-weight: 400;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+
+        .stack-body .pr-item {
+            position: relative;
+            border-bottom: none;
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+
+        /* Rail drawn as a segment below and above each status icon, so the chain connects the
+           icons and stops at the ends of the stack whatever height the rows take. */
+        .stack-body .pr-item::before,
+        .stack-body .pr-item::after {
+            content: "";
+            position: absolute;
+            left: 23px;
+            width: 2px;
+            background: var(--color-stack-rail);
+        }
+
+        .stack-body .pr-item::before { top: 28px; bottom: 0; }
+        .stack-body .pr-item::after { top: 0; height: 8px; }
+        .stack-body .pr-item:last-child::before { content: none; }
+        .stack-body .pr-item:first-child::after { content: none; }
+
+        .stack-body .pr-status {
+            position: relative;
+            background: var(--color-bg);
+            border-radius: 50%;
+            box-shadow: 0 0 0 3px var(--color-bg);
+        }
+
+        .pr-context { opacity: 0.6; }
+        .pr-context .pr-title { font-weight: 400; }
+
+        .stack-pos {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            background: var(--color-bg);
+            border: 1px solid var(--color-border);
+            border-radius: 20px;
+            padding: 0 6px;
+            margin-right: 6px;
+            vertical-align: 1px;
+        }
+
+        .pr-base a { color: var(--color-link); text-decoration: none; }
+        .pr-base a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Pull Requests</h1>
+        <div class="header-right">
+            <span class="last-updated" id="last-updated"></span>
+            <div class="interval-bar">
+                <button class="interval-btn" data-interval="60000" onclick="setInterval_('60000', this)">1m</button>
+                <button class="interval-btn" data-interval="300000" onclick="setInterval_('300000', this)">5m</button>
+                <button class="interval-btn" data-interval="1800000" onclick="setInterval_('1800000', this)">30m</button>
+                <button class="interval-btn" data-interval="3600000" onclick="setInterval_('3600000', this)">1h</button>
+                <button class="interval-btn active" data-interval="0" onclick="setInterval_('0', this)">on access</button>
+            </div>
+            <span class="pr-count" id="total-count">-</span>
+            <button class="refresh-btn" onclick="fetchPRs()">Refresh</button>
+            <button class="refresh-btn" id="clear-token-btn" style="display:none" onclick="clearToken()">Clear token</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="setup" id="setup">
+            <label>Fine-grained GitHub token with <code>Pull requests</code> read access (<a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">create one</a>)</label>
+            <div class="setup-row">
+                <input type="password" id="token-input" placeholder="github_pat_..." autocomplete="off">
+                <label class="remember-label"><input type="checkbox" id="remember-check"> Remember across sessions</label>
+                <button onclick="saveToken()">Save & Load</button>
+            </div>
+        </div>
+
+        <div class="filter-bar" id="filters" style="display:none">
+            <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
+            <button class="filter-btn" data-filter="open" onclick="setFilter('open', this)">Ready</button>
+            <button class="filter-btn" data-filter="draft" onclick="setFilter('draft', this)">Draft</button>
+            <span style="color:var(--color-border);margin:0 4px">|</span>
+            <button class="filter-btn active" data-age="recent" onclick="setAgeFilter('recent', this)">Recent</button>
+            <button class="filter-btn" data-age="all" onclick="setAgeFilter('all', this)">All time</button>
+        </div>
+
+        <div id="content">
+            <div class="empty">Enter a GitHub token to load your open PRs.</div>
+        </div>
+    </div>
+
+    <script>
+        const REPO_PR_PAGE_CAP = 5; // at most 500 open PRs per repo are scanned for stack links
+
+        let allPRs = [];
+        let currentFilter = "all";
+        let refreshTimer = null;
+        let currentIntervalMs = 0; // 0 = "on access"
+        let isFetching = false;
+        let currentAgeFilter = "recent"; // "recent" or "all"
+
+        function getToken() {
+            return sessionStorage.getItem("gh_token") || localStorage.getItem("gh_token");
+        }
+
+        function saveToken() {
+            const token = document.getElementById("token-input").value.trim();
+            if (!token) return;
+            const remember = document.getElementById("remember-check").checked;
+            if (remember) {
+                sessionStorage.removeItem("gh_token");
+                localStorage.setItem("gh_token", token);
+            } else {
+                localStorage.removeItem("gh_token");
+                sessionStorage.setItem("gh_token", token);
+            }
+            document.getElementById("clear-token-btn").style.display = "";
+            fetchPRs();
+        }
+
+        function clearToken() {
+            sessionStorage.removeItem("gh_token");
+            localStorage.removeItem("gh_token");
+            allPRs = [];
+            document.getElementById("total-count").textContent = "-";
+            document.getElementById("last-updated").textContent = "";
+            document.getElementById("content").innerHTML = `<div class="empty">Enter a GitHub token to load your open PRs.</div>`;
+            document.getElementById("setup").style.display = "";
+            document.getElementById("filters").style.display = "none";
+            document.getElementById("clear-token-btn").style.display = "none";
+            if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+        }
+
+        function timeAgo(dateStr) {
+            const now = new Date();
+            const date = new Date(dateStr);
+            const seconds = Math.floor((now - date) / 1000);
+
+            if (seconds < 60) return "just now";
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            if (hours < 24) return `${hours}h ago`;
+            const days = Math.floor(hours / 24);
+            if (days < 30) return `${days}d ago`;
+            const months = Math.floor(days / 30);
+            return `${months}mo ago`;
+        }
+
+        function prOpenIcon() {
+            return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"></path></svg>`;
+        }
+
+        function prDraftIcon() {
+            return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M3.25 1A2.25 2.25 0 0 1 4 5.372v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 3.25 1Zm9.5 5.5a.75.75 0 0 1 .75.75v3.378a2.251 2.251 0 1 1-1.5 0V7.25a.75.75 0 0 1 .75-.75Zm-2.03-5.273a.75.75 0 0 1 1.06 0l.97.97.97-.97a.75.75 0 1 1 1.06 1.06l-.97.97.97.97a.75.75 0 0 1-1.06 1.06l-.97-.97-.97.97a.75.75 0 1 1-1.06-1.06l.97-.97-.97-.97a.75.75 0 0 1 0-1.06ZM3.25 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm9.5.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z"></path></svg>`;
+        }
+
+        function repoIcon() {
+            return `<svg class="repo-icon" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"></path></svg>`;
+        }
+
+        function branchIcon() {
+            return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>`;
+        }
+
+        function esc(str) {
+            const el = document.createElement("span");
+            el.textContent = str;
+            return el.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+        }
+
+        function getLabelColor(name) {
+            let hash = 0;
+            for (let i = 0; i < name.length; i++) {
+                hash = name.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue}, 50%, 30%)`;
+        }
+
+        // "owner:branch" - unique per branch even when a PR is opened from a fork.
+        function refLabel(side) {
+            if (!side) return null;
+            if (side.label) return side.label;
+            if (!side.ref) return null;
+            const owner = side.repo && side.repo.full_name ? side.repo.full_name.split("/")[0] : "";
+            return `${owner}:${side.ref}`;
+        }
+
+        // Every open PR in the repo, so a stack is visible even when part of it belongs to
+        // someone else. Degrades to whatever was fetched if the listing fails. Sorted by last
+        // update rather than the default creation order: when a repo has more open PRs than the
+        // page cap covers, the members of a live stack are the ones worth keeping in the window.
+        async function fetchRepoOpenPRs(repoFullName, headers) {
+            const out = [];
+            for (let page = 1; page <= REPO_PR_PAGE_CAP; page++) {
+                let data;
+                try {
+                    const res = await fetch(
+                        `https://api.github.com/repos/${repoFullName}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=${page}`,
+                        { headers }
+                    );
+                    if (!res.ok) break;
+                    data = await res.json();
+                } catch (err) {
+                    console.warn(`Failed to list open PRs for ${repoFullName}:`, err);
+                    break;
+                }
+                if (!Array.isArray(data) || data.length === 0) break;
+                out.push(...data);
+                if (data.length < 100) break;
+            }
+            return out;
+        }
+
+        // Two open PRs are stacked when one's base branch is the other's head branch. Chains
+        // of those links form a stack; the result maps PR number -> node carrying its position.
+        function buildStackIndex(repoPRs) {
+            const nodes = repoPRs.map(pr => ({
+                number: pr.number,
+                title: pr.title,
+                html_url: pr.html_url,
+                draft: !!pr.draft,
+                author: pr.user ? pr.user.login : "",
+                updated_at: pr.updated_at,
+                requestedReviewers: (pr.requested_reviewers || []).map(r => r.login),
+                defaultBranch: pr.base && pr.base.repo ? pr.base.repo.default_branch : null,
+                baseRef: pr.base ? pr.base.ref : "",
+                headLabel: refLabel(pr.head),
+                baseLabel: refLabel(pr.base),
+                parent: null,
+                children: [],
+                depth: 1,
+                stack: null,
+            }));
+
+            const byHead = new Map();
+            for (const node of nodes) {
+                if (node.headLabel && !byHead.has(node.headLabel)) byHead.set(node.headLabel, node);
+            }
+            for (const node of nodes) {
+                const parent = node.baseLabel ? byHead.get(node.baseLabel) : null;
+                if (parent && parent !== node) {
+                    node.parent = parent;
+                    parent.children.push(node);
+                }
+            }
+
+            // Retargeted branches can end up pointing at each other; cut the link closing the loop.
+            for (const node of nodes) {
+                const seen = new Set([node]);
+                let current = node;
+                while (current.parent) {
+                    if (seen.has(current.parent)) {
+                        current.parent.children = current.parent.children.filter(child => child !== current);
+                        current.parent = null;
+                        break;
+                    }
+                    seen.add(current.parent);
+                    current = current.parent;
+                }
+            }
+
+            const index = new Map();
+            const visited = new Set();
+            for (const node of nodes) {
+                if (visited.has(node)) continue;
+
+                // Collect the connected component this PR belongs to.
+                const members = [];
+                const queue = [node];
+                visited.add(node);
+                while (queue.length) {
+                    const current = queue.pop();
+                    members.push(current);
+                    const neighbours = current.parent ? [current.parent, ...current.children] : current.children;
+                    for (const neighbour of neighbours) {
+                        if (visited.has(neighbour)) continue;
+                        visited.add(neighbour);
+                        queue.push(neighbour);
+                    }
+                }
+
+                // Order it bottom-up, so the PR closest to the base branch comes first.
+                const stack = { id: 0, size: members.length, ordered: [], maxDepth: 1, rootBaseRef: null };
+                const roots = members.filter(member => !member.parent).sort((a, b) => a.number - b.number);
+                const walk = (current, depth) => {
+                    current.depth = depth;
+                    current.stack = stack;
+                    stack.ordered.push(current);
+                    stack.maxDepth = Math.max(stack.maxDepth, depth);
+                    current.children.slice().sort((a, b) => a.number - b.number).forEach(child => walk(child, depth + 1));
+                };
+                roots.forEach(root => walk(root, 1));
+                for (const member of members) {
+                    if (member.stack) continue;
+                    member.stack = stack;
+                    stack.ordered.push(member);
+                }
+                stack.id = stack.ordered[0].number;
+                stack.rootBaseRef = roots.length === 1 ? roots[0].baseRef : null;
+
+                for (const member of members) index.set(member.number, member);
+            }
+
+            return index;
+        }
+
+        let lastFetchTime = null;
+
+        async function fetchPRs() {
+            const token = getToken();
+            if (!token) return;
+            if (isFetching) return;
+            isFetching = true;
+
+            document.getElementById("setup").style.display = "none";
+            document.getElementById("filters").style.display = "flex";
+
+            // Only show full loading spinner if we have no data yet
+            if (allPRs.length === 0) {
+                document.getElementById("content").innerHTML = `
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <div>Loading pull requests...</div>
+                    </div>`;
+            }
+
+            try {
+                const headers = {
+                    Authorization: `token ${token}`,
+                    Accept: "application/vnd.github.v3+json",
+                };
+
+                // Search for open PRs authored by the authenticated user in the org
+                const userLoginCacheKey = `gh_user_login_${token}`;
+                let login = null;
+                try {
+                    login = localStorage.getItem(userLoginCacheKey);
+                } catch (e) {
+                    login = null;
+                }
+                if (!login) {
+                    const userRes = await fetch("https://api.github.com/user", { headers });
+                    if (!userRes.ok) throw new Error("Invalid token or API error");
+                    const user = await userRes.json();
+                    login = user.login;
+                    try {
+                        localStorage.setItem(userLoginCacheKey, login);
+                    } catch (e) {
+                        // Ignore storage errors and proceed without caching
+                    }
+                }
+
+                let prs = [];
+                let page = 1;
+                while (true) {
+                    const searchRes = await fetch(
+                        `https://api.github.com/search/issues?q=is:pr+is:open+author:${login}&per_page=100&page=${page}&sort=updated&order=desc`,
+                        { headers }
+                    );
+                    if (!searchRes.ok) throw new Error("Failed to fetch PRs");
+                    const data = await searchRes.json();
+                    const items = Array.isArray(data.items) ? data.items : [];
+                    if (items.length === 0) break;
+                    prs = prs.concat(items);
+                    if (prs.length >= data.total_count) break;
+                    page++;
+                }
+
+                const repoNames = [...new Set(
+                    prs.map(pr => pr.repository_url.replace("https://api.github.com/repos/", ""))
+                )];
+
+                // One listing per repo covers both the stack graph and the draft/reviewer state,
+                // which saves a per-PR details call for every PR it contains.
+                const stackIndexes = {};
+                await Promise.all(repoNames.map(async (repo) => {
+                    stackIndexes[repo] = buildStackIndex(await fetchRepoOpenPRs(repo, headers));
+                }));
+
+                // Fetch PR details and review status in batches to avoid secondary rate limits
+                const BATCH_SIZE = 5;
+                const enriched = [];
+                for (let i = 0; i < prs.length; i += BATCH_SIZE) {
+                    const batch = prs.slice(i, i + BATCH_SIZE);
+                    const results = await Promise.all(batch.map(async (pr) => {
+                        const repoFullName = pr.repository_url.replace("https://api.github.com/repos/", "");
+                        const stackNode = stackIndexes[repoFullName]
+                            ? stackIndexes[repoFullName].get(pr.number) || null
+                            : null;
+
+                        let reviewState = "PENDING";
+                        let isDraft = stackNode ? stackNode.draft : !!pr.draft;
+                        let requestedReviewers = stackNode ? stackNode.requestedReviewers : [];
+                        let detailsNode = null;
+                        try {
+                            const requests = [
+                                fetch(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}/reviews`, { headers }),
+                            ];
+                            if (!stackNode) {
+                                requests.push(fetch(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`, { headers }));
+                            }
+                            const [reviewsRes, prDetailsRes] = await Promise.all(requests);
+
+                            if (prDetailsRes && prDetailsRes.ok) {
+                                const details = await prDetailsRes.json();
+                                isDraft = !!details.draft;
+                                requestedReviewers = (details.requested_reviewers || []).map(r => r.login);
+                                // No listing entry to place this PR in a stack, but its own base
+                                // branch is known, so keep the "onto <branch>" hint.
+                                detailsNode = {
+                                    parent: null,
+                                    stack: null,
+                                    baseRef: details.base ? details.base.ref : "",
+                                    defaultBranch: details.base && details.base.repo ? details.base.repo.default_branch : null,
+                                };
+                            }
+
+                            if (reviewsRes.ok) {
+                                const reviews = await reviewsRes.json();
+                                const latestByUser = {};
+                                for (const r of reviews) {
+                                    if (r.state === "COMMENTED") continue;
+                                    latestByUser[r.user.login] = r.state;
+                                }
+                                const states = Object.values(latestByUser);
+                                if (states.includes("CHANGES_REQUESTED")) reviewState = "CHANGES_REQUESTED";
+                                else if (states.includes("APPROVED")) reviewState = "APPROVED";
+                            }
+                        } catch (err) {
+                            console.warn(`Failed to fetch details for ${repoFullName}#${pr.number}:`, err);
+                        }
+
+                        return { ...pr, repoFullName, reviewState, isDraft, requestedReviewers, stackNode: stackNode || detailsNode };
+                    }));
+                    enriched.push(...results);
+                }
+
+                allPRs = enriched;
+                lastFetchTime = new Date();
+                document.getElementById("total-count").textContent = allPRs.length;
+                document.getElementById("last-updated").textContent = `Updated just now`;
+                renderPRs();
+                scheduleRefresh();
+                isFetching = false;
+            } catch (err) {
+                isFetching = false;
+                if (typeof refreshTimer !== "undefined" && refreshTimer) {
+                    clearInterval(refreshTimer);
+                    refreshTimer = null;
+                }
+                document.getElementById("content").innerHTML = `
+                    <div class="error">${esc(err.message)}</div>`;
+                document.getElementById("setup").style.display = "";
+                document.getElementById("filters").style.display = "none";
+            }
+        }
+
+        function setFilter(filter, btn) {
+            currentFilter = filter;
+            localStorage.setItem("status_filter", filter);
+            document.querySelectorAll(".filter-btn[data-filter]").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            renderPRs();
+        }
+
+        function setAgeFilter(age, btn) {
+            currentAgeFilter = age;
+            localStorage.setItem("age_filter", age);
+            document.querySelectorAll(".filter-btn[data-age]").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            renderPRs();
+        }
+
+        function stackPosHtml(node) {
+            if (!node || !node.stack || node.stack.size < 2) return "";
+            return `<span class="stack-pos" title="Level ${node.depth} of ${node.stack.maxDepth} in this stack">${node.depth}/${node.stack.maxDepth}</span>`;
+        }
+
+        // What this PR sits on: the PR below it in the stack, or a non-default base branch.
+        function baseMetaHtml(node) {
+            if (!node) return "";
+            if (node.parent) {
+                return ` &middot; <span class="pr-base">based on <a href="${esc(node.parent.html_url)}" target="_blank" rel="noopener noreferrer">#${node.parent.number}</a></span>`;
+            }
+            if (node.baseRef && node.baseRef !== node.defaultBranch) {
+                return ` &middot; <span class="pr-base">onto ${esc(node.baseRef)}</span>`;
+            }
+            return "";
+        }
+
+        function prItemHtml(pr) {
+            const node = pr.stackNode;
+            const statusClass = pr.isDraft ? "draft" : "open";
+            const icon = pr.isDraft ? prDraftIcon() : prOpenIcon();
+
+            let reviewBadge = "";
+            if (!pr.isDraft) {
+                if (pr.reviewState === "APPROVED")
+                    reviewBadge = `<span class="review-status review-approved">Approved</span>`;
+                else if (pr.reviewState === "CHANGES_REQUESTED")
+                    reviewBadge = `<span class="review-status review-changes">Changes requested</span>`;
+                else {
+                    const reviewers = (pr.requestedReviewers || []).map(r => esc(r)).join(", ");
+                    reviewBadge = `<span class="review-status review-pending">Review pending${reviewers ? `: ${reviewers}` : ''}</span>`;
+                }
+            }
+
+            const labels = (pr.labels || []).map(l =>
+                `<span class="pr-label" style="background:${getLabelColor(l.name)};color:var(--color-btn-text)">${esc(l.name)}</span>`
+            ).join("");
+
+            return `<div class="pr-item">
+                <span class="pr-status ${statusClass}">${icon}</span>
+                <div class="pr-info">
+                    <div class="pr-title">
+                        ${stackPosHtml(node)}
+                        <a href="${esc(pr.html_url)}" target="_blank" rel="noopener noreferrer">${esc(pr.title)}</a>
+                        ${pr.isDraft ? '<span class="draft-badge">Draft</span>' : ''}
+                        ${labels ? `<span class="pr-labels">${labels}</span>` : ''}
+                    </div>
+                    <div class="pr-meta">
+                        #${parseInt(pr.number)} opened ${timeAgo(pr.created_at)}${baseMetaHtml(node)}
+                    </div>
+                </div>
+                ${reviewBadge}
+                <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
+            </div>`;
+        }
+
+        // A stack member that is not one of the listed PRs - someone else's, or filtered out.
+        // Rendered muted so the chain stays readable without competing with your own PRs.
+        function contextItemHtml(node) {
+            return `<div class="pr-item pr-context">
+                <span class="pr-status ${node.draft ? "draft" : "open"}">${node.draft ? prDraftIcon() : prOpenIcon()}</span>
+                <div class="pr-info">
+                    <div class="pr-title">
+                        ${stackPosHtml(node)}
+                        <a href="${esc(node.html_url)}" target="_blank" rel="noopener noreferrer">${esc(node.title)}</a>
+                        ${node.draft ? '<span class="draft-badge">Draft</span>' : ''}
+                    </div>
+                    <div class="pr-meta">
+                        #${parseInt(node.number)}${node.author ? ` by ${esc(node.author)}` : ''}${baseMetaHtml(node)}
+                    </div>
+                </div>
+                <div class="pr-updated">${timeAgo(node.updated_at)}</div>
+            </div>`;
+        }
+
+        function stackHtml(stack, prsByNumber) {
+            let html = `<div class="stack-group">
+                <div class="stack-header">
+                    ${branchIcon()}
+                    <span>Stack of ${stack.size}</span>
+                    ${stack.rootBaseRef ? `<span class="stack-onto">onto ${esc(stack.rootBaseRef)}</span>` : ''}
+                </div>
+                <div class="stack-body">`;
+
+            for (const node of stack.ordered) {
+                const pr = prsByNumber.get(node.number);
+                html += pr ? prItemHtml(pr) : contextItemHtml(node);
+            }
+
+            return `${html}</div></div>`;
+        }
+
+        function renderPRs() {
+            const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+
+            let filtered = allPRs;
+            if (currentFilter === "open") filtered = filtered.filter(pr => !pr.isDraft);
+            if (currentFilter === "draft") filtered = filtered.filter(pr => pr.isDraft);
+            if (currentAgeFilter === "recent") filtered = filtered.filter(pr => new Date(pr.updated_at) >= twoWeeksAgo);
+
+            // Group by repo
+            const groups = {};
+            for (const pr of filtered) {
+                const repo = pr.repoFullName;
+                if (!groups[repo]) groups[repo] = [];
+                groups[repo].push(pr);
+            }
+
+            // Sort repos by most recently updated PR
+            const sortedRepos = Object.keys(groups).sort((a, b) => {
+                const aMax = Math.max(...groups[a].map(p => new Date(p.updated_at)));
+                const bMax = Math.max(...groups[b].map(p => new Date(p.updated_at)));
+                return bMax - aMax;
+            });
+
+            if (sortedRepos.length === 0) {
+                document.getElementById("content").innerHTML = `<div class="empty">No pull requests found.</div>`;
+                return;
+            }
+
+            let html = "";
+            for (const repo of sortedRepos) {
+                const prs = groups[repo].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+                const repoShort = repo.split("/")[1];
+
+                html += `<div class="repo-group">
+                    <div class="repo-header">
+                        ${repoIcon()}
+                        <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a></span>
+                        <span class="repo-pr-count">${prs.length}</span>
+                    </div>`;
+
+                // PRs are already newest-first, so a stack takes the position of its most
+                // recently updated member and every other member follows it in stack order.
+                const prsByNumber = new Map(prs.map(pr => [pr.number, pr]));
+                const renderedStacks = new Set();
+                for (const pr of prs) {
+                    const stack = pr.stackNode ? pr.stackNode.stack : null;
+                    if (!stack || stack.size < 2) {
+                        html += prItemHtml(pr);
+                        continue;
+                    }
+                    if (renderedStacks.has(stack.id)) continue;
+                    renderedStacks.add(stack.id);
+                    html += stackHtml(stack, prsByNumber);
+                }
+
+                html += `</div>`;
+            }
+
+            document.getElementById("content").innerHTML = html;
+        }
+
+        function updateLastUpdated() {
+            if (!lastFetchTime) return;
+            document.getElementById("last-updated").textContent = `Updated ${timeAgo(lastFetchTime.toISOString())}`;
+        }
+
+        // Keep "updated X ago" text fresh every 30s
+        setInterval(updateLastUpdated, 30000);
+
+        function setInterval_(ms, btn) {
+            currentIntervalMs = parseInt(ms);
+            localStorage.setItem("refresh_interval", ms);
+            document.querySelectorAll(".interval-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            scheduleRefresh();
+        }
+
+        function scheduleRefresh() {
+            if (refreshTimer) {
+                clearInterval(refreshTimer);
+                refreshTimer = null;
+            }
+            if (currentIntervalMs > 0) {
+                refreshTimer = setInterval(() => fetchPRs(), currentIntervalMs);
+            }
+        }
+
+        // "On access" — refresh when tab becomes visible again
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible" && currentIntervalMs === 0 && getToken()) {
+                fetchPRs();
+            }
+        });
+
+        function restoreSettings() {
+            const savedInterval = localStorage.getItem("refresh_interval");
+            if (savedInterval !== null) {
+                currentIntervalMs = parseInt(savedInterval);
+                document.querySelectorAll(".interval-btn").forEach(b => {
+                    b.classList.toggle("active", b.dataset.interval === savedInterval);
+                });
+            }
+
+            const savedFilter = localStorage.getItem("status_filter");
+            if (savedFilter !== null) {
+                currentFilter = savedFilter;
+                document.querySelectorAll(".filter-btn[data-filter]").forEach(b => {
+                    b.classList.toggle("active", b.dataset.filter === savedFilter);
+                });
+            }
+
+            const savedAge = localStorage.getItem("age_filter");
+            if (savedAge !== null) {
+                currentAgeFilter = savedAge;
+                document.querySelectorAll(".filter-btn[data-age]").forEach(b => {
+                    b.classList.toggle("active", b.dataset.age === savedAge);
+                });
+            }
+        }
+
+        restoreSettings();
+
+        // Pre-check "Remember" if token is already in localStorage
+        if (localStorage.getItem("gh_token")) {
+            document.getElementById("remember-check").checked = true;
+        }
+
+        // Auto-load if token exists
+        if (getToken()) {
+            document.getElementById("setup").style.display = "none";
+            document.getElementById("clear-token-btn").style.display = "";
+            fetchPRs();
+        }
+    </script>
+</body>
+</html>
