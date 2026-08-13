@@ -29,6 +29,8 @@
             --color-ci-pending: #9a6700;
             --color-stack-accent: #8250df;
             --color-stack-rail: #afb8c1;
+            --color-feature-accent: #bf3989;
+            --color-feature-bg: #ffeff7;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -55,6 +57,8 @@
                 --color-ci-pending: #d29922;
                 --color-stack-accent: #a371f7;
                 --color-stack-rail: #3d444d;
+                --color-feature-accent: #db61a2;
+                --color-feature-bg: #2d1524;
             }
         }
 
@@ -455,6 +459,91 @@
 
         .pr-base a { color: var(--color-link); text-decoration: none; }
         .pr-base a:hover { text-decoration: underline; }
+
+        .feature-group {
+            border: 1px solid var(--color-border);
+            border-left: 3px solid var(--color-feature-accent);
+            border-radius: 6px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .feature-header {
+            background: var(--color-bg-secondary);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-bottom: 1px solid var(--color-border);
+        }
+
+        .feature-header svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--color-feature-accent); }
+
+        .feature-key {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-feature-accent);
+        }
+
+        .feature-kind {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .feature-count {
+            color: var(--color-text-secondary);
+            font-size: 12px;
+            background: var(--color-bg);
+            padding: 1px 8px;
+            border-radius: 20px;
+            margin-left: auto;
+        }
+
+        /* Repo divider inside a cross-repo group - lighter than a repo group header, because
+           here the repo is the secondary axis and the feature is the heading. */
+        .feature-repo {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--color-text-secondary);
+            background: var(--color-bg-secondary);
+            border-bottom: 1px solid var(--color-border);
+            border-top: 1px solid var(--color-border);
+        }
+
+        .feature-header + .feature-repo { border-top: none; }
+        .feature-repo svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .feature-repo a { color: var(--color-text-secondary); text-decoration: none; }
+        .feature-repo a:hover { color: var(--color-link); }
+
+        /* Shown on a PR in the by-repo view when it has siblings in other repositories. */
+        .feature-badge {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--color-feature-accent);
+            background: var(--color-feature-bg);
+            border: 1px solid var(--color-feature-accent);
+            border-radius: 20px;
+            padding: 0 6px;
+            margin-left: 6px;
+            cursor: pointer;
+            vertical-align: 1px;
+            white-space: nowrap;
+        }
+
+        .feature-badge:hover { opacity: 0.8; }
+
+        .section-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            color: var(--color-text-secondary);
+            margin: 24px 0 8px;
+        }
     </style>
 </head>
 <body>
@@ -492,6 +581,9 @@
             <span style="color:var(--color-border);margin:0 4px">|</span>
             <button class="filter-btn active" data-age="recent" onclick="setAgeFilter('recent', this)">Recent</button>
             <button class="filter-btn" data-age="all" onclick="setAgeFilter('all', this)">All time</button>
+            <span style="color:var(--color-border);margin:0 4px">|</span>
+            <button class="filter-btn active" data-group="repo" onclick="setGrouping('repo', this)">By repo</button>
+            <button class="filter-btn" data-group="feature" onclick="setGrouping('feature', this)">By feature</button>
         </div>
 
         <div id="content">
@@ -503,11 +595,13 @@
         const REPO_PR_PAGE_CAP = 5; // at most 500 open PRs per repo are scanned for stack links
 
         let allPRs = [];
+        let allRepoNodes = [];
         let currentFilter = "all";
         let refreshTimer = null;
         let currentIntervalMs = 0; // 0 = "on access"
         let isFetching = false;
         let currentAgeFilter = "recent"; // "recent" or "all"
+        let currentGrouping = "repo"; // "repo" or "feature"
 
         function getToken() {
             return sessionStorage.getItem("gh_token") || localStorage.getItem("gh_token");
@@ -532,6 +626,7 @@
             sessionStorage.removeItem("gh_token");
             localStorage.removeItem("gh_token");
             allPRs = [];
+            allRepoNodes = [];
             document.getElementById("total-count").textContent = "-";
             document.getElementById("last-updated").textContent = "";
             document.getElementById("content").innerHTML = `<div class="empty">Enter a GitHub token to load your open PRs.</div>`;
@@ -573,6 +668,10 @@
             return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>`;
         }
 
+        function linkIcon() {
+            return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Zm-4.69 9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0Z"></path></svg>`;
+        }
+
         function esc(str) {
             const el = document.createElement("span");
             el.textContent = str;
@@ -586,6 +685,48 @@
             }
             const hue = Math.abs(hash) % 360;
             return `hsl(${hue}, 50%, 30%)`;
+        }
+
+        // A ticket id has to sit at the start of the title, or at the start of a branch segment
+        // ("l-686-thinking-in-ui", "ondra/ai-624-full-scale"). Anchoring it keeps version numbers
+        // and library names in the middle of a title from being read as ticket ids.
+        const FEATURE_TRAILER_RE = /^[ \t]*part-of:[ \t]*(\S.*?)[ \t]*$/im;
+        const TICKET_IN_TITLE_RE = /^([A-Za-z]{1,10}-\d{1,6})\b/;
+        const TICKET_IN_BRANCH_RE = /(?:^|\/)([A-Za-z]{1,10}-\d{1,6})(?:[-_/.]|$)/;
+
+        // Anchored tokens that are never ticket ids.
+        const TICKET_PREFIX_BLOCKLIST = new Set(["UTF", "GPT", "SHA", "RFC", "ISO", "IPV", "ES", "PY", "NODE", "HTTP"]);
+
+        // Branch names shared by unrelated work - typically PRs opened from a fork's default
+        // branch, which say nothing about two changes belonging together.
+        const GENERIC_BRANCH_NAMES = new Set(["master", "main", "develop", "dev", "trunk", "release", "staging", "production"]);
+
+        function matchTicket(text, pattern) {
+            if (!text) return null;
+            const match = text.match(pattern);
+            if (!match) return null;
+            const ticket = match[1].toUpperCase();
+            return TICKET_PREFIX_BLOCKLIST.has(ticket.split("-")[0]) ? null : ticket;
+        }
+
+        // What ties a PR to the same piece of work in another repository, best signal first:
+        // an explicit "Part-of: <key>" line in the body, then a ticket id, then the branch name
+        // (identical branch names across repos are how a ticket-less change is usually spread).
+        // Returns null only when a PR has no branch name to fall back on.
+        function featureKey(title, headRef, body) {
+            const trailer = body ? body.match(FEATURE_TRAILER_RE) : null;
+            if (trailer) {
+                const label = trailer[1].trim();
+                return { key: `part-of:${label.toLowerCase()}`, label, kind: "declared" };
+            }
+
+            const ticket = matchTicket(title, TICKET_IN_TITLE_RE) || matchTicket(headRef, TICKET_IN_BRANCH_RE);
+            if (ticket) return { key: `ticket:${ticket}`, label: ticket, kind: "ticket" };
+
+            if (headRef && !GENERIC_BRANCH_NAMES.has(headRef.toLowerCase())) {
+                return { key: `branch:${headRef}`, label: headRef, kind: "branch" };
+            }
+            return null;
         }
 
         // "owner:branch" - unique per branch even when a PR is opened from a fork.
@@ -625,7 +766,7 @@
 
         // Two open PRs are stacked when one's base branch is the other's head branch. Chains
         // of those links form a stack; the result maps PR number -> node carrying its position.
-        function buildStackIndex(repoPRs) {
+        function buildStackIndex(repoPRs, repoFullName) {
             const nodes = repoPRs.map(pr => ({
                 number: pr.number,
                 title: pr.title,
@@ -636,6 +777,9 @@
                 requestedReviewers: (pr.requested_reviewers || []).map(r => r.login),
                 defaultBranch: pr.base && pr.base.repo ? pr.base.repo.default_branch : null,
                 baseRef: pr.base ? pr.base.ref : "",
+                headRef: pr.head ? pr.head.ref : "",
+                repoFullName,
+                feature: featureKey(pr.title, pr.head ? pr.head.ref : "", pr.body || ""),
                 headLabel: refLabel(pr.head),
                 baseLabel: refLabel(pr.base),
                 parent: null,
@@ -786,8 +930,12 @@
                 // which saves a per-PR details call for every PR it contains.
                 const stackIndexes = {};
                 await Promise.all(repoNames.map(async (repo) => {
-                    stackIndexes[repo] = buildStackIndex(await fetchRepoOpenPRs(repo, headers));
+                    stackIndexes[repo] = buildStackIndex(await fetchRepoOpenPRs(repo, headers), repo);
                 }));
+
+                // Every open PR seen while building the stacks, so a cross-repo set can also show
+                // the parts a colleague owns - as long as they are in a repo you have a PR in too.
+                allRepoNodes = repoNames.flatMap(repo => [...stackIndexes[repo].values()]);
 
                 // Fetch PR details and review status in batches to avoid secondary rate limits
                 const BATCH_SIZE = 5;
@@ -823,6 +971,7 @@
                                     parent: null,
                                     stack: null,
                                     baseRef: details.base ? details.base.ref : "",
+                                    headRef: details.head ? details.head.ref : "",
                                     defaultBranch: details.base && details.base.repo ? details.base.repo.default_branch : null,
                                 };
                             }
@@ -842,7 +991,12 @@
                             console.warn(`Failed to fetch details for ${repoFullName}#${pr.number}:`, err);
                         }
 
-                        return { ...pr, repoFullName, reviewState, isDraft, requestedReviewers, stackNode: stackNode || detailsNode };
+                        const node = stackNode || detailsNode;
+                        const feature = node && node.feature
+                            ? node.feature
+                            : featureKey(pr.title, node ? node.headRef : "", pr.body || "");
+
+                        return { ...pr, repoFullName, reviewState, isDraft, requestedReviewers, stackNode: node, feature };
                     }));
                     enriched.push(...results);
                 }
@@ -881,6 +1035,35 @@
             document.querySelectorAll(".filter-btn[data-age]").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
             renderPRs();
+        }
+
+        // Set while rendering: feature key -> how many repos it spans. Lets a PR in the by-repo
+        // view advertise that it is one part of a wider change without re-deriving the groups.
+        let featureSpan = new Map();
+
+        function featureBadgeHtml(pr) {
+            if (currentGrouping !== "repo" || !pr.feature) return "";
+            const repoCount = featureSpan.get(pr.feature.key);
+            if (!repoCount || repoCount < 2) return "";
+            return `<span class="feature-badge" onclick="showFeature('${esc(pr.feature.key)}')"
+                title="Part of a change spanning ${repoCount} repositories - click to group by feature"
+            >${esc(pr.feature.label)} &middot; ${repoCount} repos</span>`;
+        }
+
+        function setGrouping(grouping, btn) {
+            currentGrouping = grouping;
+            localStorage.setItem("grouping", grouping);
+            document.querySelectorAll(".filter-btn[data-group]").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            renderPRs();
+        }
+
+        // Following a cross-repo badge: switch to the grouped view and jump to that group.
+        function showFeature(key) {
+            const btn = document.querySelector('.filter-btn[data-group="feature"]');
+            if (btn) setGrouping("feature", btn);
+            const target = document.getElementById(featureId(key));
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
         function stackPosHtml(node) {
@@ -928,6 +1111,7 @@
                         ${stackPosHtml(node)}
                         <a href="${esc(pr.html_url)}" target="_blank" rel="noopener noreferrer">${esc(pr.title)}</a>
                         ${pr.isDraft ? '<span class="draft-badge">Draft</span>' : ''}
+                        ${featureBadgeHtml(pr)}
                         ${labels ? `<span class="pr-labels">${labels}</span>` : ''}
                     </div>
                     <div class="pr-meta">
@@ -975,6 +1159,140 @@
             return `${html}</div></div>`;
         }
 
+        // The PRs of one repo, newest first, with stacks collapsed into a single chain. A stack
+        // takes the position of its most recently updated member; `renderedStacks` is shared
+        // across the whole page so a chain is never drawn twice.
+        function repoBodyHtml(prs, renderedStacks) {
+            const prsByNumber = new Map(prs.map(pr => [pr.number, pr]));
+            let html = "";
+            for (const pr of prs) {
+                const stack = pr.stackNode ? pr.stackNode.stack : null;
+                if (!stack || stack.size < 2) {
+                    html += prItemHtml(pr);
+                    continue;
+                }
+                // stackHtml draws every member, so skipping an already drawn stack cannot hide a PR.
+                if (renderedStacks.has(stack)) continue;
+                renderedStacks.add(stack);
+                html += stackHtml(stack, prsByNumber);
+            }
+            return html;
+        }
+
+        function repoGroupHtml(repo, prs, renderedStacks) {
+            const repoShort = repo.split("/")[1];
+            return `<div class="repo-group">
+                <div class="repo-header">
+                    ${repoIcon()}
+                    <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a></span>
+                    <span class="repo-pr-count">${prs.length}</span>
+                </div>
+                ${repoBodyHtml(prs, renderedStacks)}
+            </div>`;
+        }
+
+        function byRepo(prs) {
+            const groups = new Map();
+            for (const pr of prs) {
+                if (!groups.has(pr.repoFullName)) groups.set(pr.repoFullName, []);
+                groups.get(pr.repoFullName).push(pr);
+            }
+            for (const list of groups.values()) list.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+            return [...groups.entries()].sort((a, b) => newest(b[1]) - newest(a[1]));
+        }
+
+        function newest(prs) {
+            return Math.max(...prs.map(pr => new Date(pr.updated_at)));
+        }
+
+        function featureId(key) {
+            return `feature-${key.replace(/[^a-z0-9]+/gi, "-")}`;
+        }
+
+        // One change implemented across several repositories - the thing GitHub has no name for.
+        // Only keys held by your own PRs in two or more repos qualify; a key confined to one repo
+        // is just a branch, and treating it as a group would bury the repo view in noise.
+        function buildFeatureGroups(prs) {
+            const groups = new Map();
+            for (const pr of prs) {
+                if (!pr.feature) continue;
+                let group = groups.get(pr.feature.key);
+                if (!group) {
+                    group = { key: pr.feature.key, label: pr.feature.label, kind: pr.feature.kind, prs: [], context: [], repos: new Set() };
+                    groups.set(pr.feature.key, group);
+                }
+                group.prs.push(pr);
+                group.repos.add(pr.repoFullName);
+            }
+
+            for (const [key, group] of groups) {
+                if (group.repos.size < 2) groups.delete(key);
+            }
+            if (groups.size === 0) return [];
+
+            // Parts of the same change owned by someone else, shown muted like stack context.
+            const own = new Set(prs.map(pr => `${pr.repoFullName}#${pr.number}`));
+            for (const node of allRepoNodes) {
+                const group = node.feature ? groups.get(node.feature.key) : null;
+                if (!group || own.has(`${node.repoFullName}#${node.number}`)) continue;
+                group.context.push(node);
+                group.repos.add(node.repoFullName);
+            }
+
+            return [...groups.values()].sort((a, b) => newest(b.prs) - newest(a.prs));
+        }
+
+        const FEATURE_KIND_LABEL = {
+            declared: "declared with Part-of",
+            ticket: "shared ticket",
+            branch: "shared branch name",
+        };
+
+        function featureGroupHtml(group, renderedStacks) {
+            const prCount = group.prs.length + group.context.length;
+            let html = `<div class="feature-group" id="${esc(featureId(group.key))}">
+                <div class="feature-header">
+                    ${linkIcon()}
+                    <span class="feature-key">${esc(group.label)}</span>
+                    <span class="feature-kind">${esc(FEATURE_KIND_LABEL[group.kind] || "")}</span>
+                    <span class="feature-count">${group.repos.size} repos &middot; ${prCount} PRs</span>
+                </div>`;
+
+            const contextByRepo = new Map();
+            for (const node of group.context) {
+                if (!contextByRepo.has(node.repoFullName)) contextByRepo.set(node.repoFullName, []);
+                contextByRepo.get(node.repoFullName).push(node);
+            }
+
+            const repos = byRepo(group.prs);
+            const ownRepos = new Set(repos.map(entry => entry[0]));
+            for (const repo of contextByRepo.keys()) {
+                if (!ownRepos.has(repo)) repos.push([repo, []]);
+            }
+
+            for (const [repo, prs] of repos) {
+                const repoShort = repo.split("/")[1];
+                html += `<div class="feature-repo">
+                    ${repoIcon()}
+                    <a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a>
+                </div>`;
+                html += repoBodyHtml(prs, renderedStacks);
+
+                // A member already drawn inside a stack chain must not repeat below it.
+                const inStacks = new Set();
+                for (const pr of prs) {
+                    const stack = pr.stackNode ? pr.stackNode.stack : null;
+                    if (stack) stack.ordered.forEach(member => inStacks.add(member.number));
+                }
+                const context = (contextByRepo.get(repo) || [])
+                    .filter(node => !inStacks.has(node.number))
+                    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+                for (const node of context) html += contextItemHtml(node);
+            }
+
+            return `${html}</div>`;
+        }
+
         function renderPRs() {
             const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
 
@@ -983,54 +1301,28 @@
             if (currentFilter === "draft") filtered = filtered.filter(pr => pr.isDraft);
             if (currentAgeFilter === "recent") filtered = filtered.filter(pr => new Date(pr.updated_at) >= twoWeeksAgo);
 
-            // Group by repo
-            const groups = {};
-            for (const pr of filtered) {
-                const repo = pr.repoFullName;
-                if (!groups[repo]) groups[repo] = [];
-                groups[repo].push(pr);
-            }
-
-            // Sort repos by most recently updated PR
-            const sortedRepos = Object.keys(groups).sort((a, b) => {
-                const aMax = Math.max(...groups[a].map(p => new Date(p.updated_at)));
-                const bMax = Math.max(...groups[b].map(p => new Date(p.updated_at)));
-                return bMax - aMax;
-            });
-
-            if (sortedRepos.length === 0) {
+            if (filtered.length === 0) {
                 document.getElementById("content").innerHTML = `<div class="empty">No pull requests found.</div>`;
                 return;
             }
 
+            const featureGroups = buildFeatureGroups(filtered);
+            featureSpan = new Map(featureGroups.map(group => [group.key, group.repos.size]));
+
+            const renderedStacks = new Set();
             let html = "";
-            for (const repo of sortedRepos) {
-                const prs = groups[repo].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-                const repoShort = repo.split("/")[1];
 
-                html += `<div class="repo-group">
-                    <div class="repo-header">
-                        ${repoIcon()}
-                        <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a></span>
-                        <span class="repo-pr-count">${prs.length}</span>
-                    </div>`;
+            if (currentGrouping === "feature") {
+                for (const group of featureGroups) html += featureGroupHtml(group, renderedStacks);
 
-                // PRs are already newest-first, so a stack takes the position of its most
-                // recently updated member and every other member follows it in stack order.
-                const prsByNumber = new Map(prs.map(pr => [pr.number, pr]));
-                const renderedStacks = new Set();
-                for (const pr of prs) {
-                    const stack = pr.stackNode ? pr.stackNode.stack : null;
-                    if (!stack || stack.size < 2) {
-                        html += prItemHtml(pr);
-                        continue;
-                    }
-                    if (renderedStacks.has(stack.id)) continue;
-                    renderedStacks.add(stack.id);
-                    html += stackHtml(stack, prsByNumber);
+                const grouped = new Set(featureGroups.flatMap(group => group.prs));
+                const rest = filtered.filter(pr => !grouped.has(pr));
+                if (featureGroups.length > 0 && rest.length > 0) {
+                    html += `<div class="section-label">Single-repo work</div>`;
                 }
-
-                html += `</div>`;
+                for (const [repo, prs] of byRepo(rest)) html += repoGroupHtml(repo, prs, renderedStacks);
+            } else {
+                for (const [repo, prs] of byRepo(filtered)) html += repoGroupHtml(repo, prs, renderedStacks);
             }
 
             document.getElementById("content").innerHTML = html;
@@ -1091,6 +1383,14 @@
                 currentAgeFilter = savedAge;
                 document.querySelectorAll(".filter-btn[data-age]").forEach(b => {
                     b.classList.toggle("active", b.dataset.age === savedAge);
+                });
+            }
+
+            const savedGrouping = localStorage.getItem("grouping");
+            if (savedGrouping !== null) {
+                currentGrouping = savedGrouping;
+                document.querySelectorAll(".filter-btn[data-group]").forEach(b => {
+                    b.classList.toggle("active", b.dataset.group === savedGrouping);
                 });
             }
         }
