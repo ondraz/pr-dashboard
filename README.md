@@ -18,6 +18,7 @@ straight from the browser with a token you provide.
 - Review status: approved, changes requested, or pending with the requested reviewers
 - Draft state, with filters for all / ready / draft
 - Age filter: recently updated (last two weeks) or all time
+- Collapsible feature, repository and stack sections, remembered across reloads
 - Configurable auto-refresh: 1m, 5m, 30m, 1h, or on tab focus
 - Light and dark theme, following the system setting
 
@@ -82,9 +83,25 @@ Opening `index.html` directly over `file://` also works in Safari, which isolate
 `localStorage` per file. Firefox and Chrome share `localStorage` across all local files,
 so any other local page could read the token there - use the localhost server instead.
 
+## Collapsing
+
+Every group header - a cross-repo feature, a repository, a repository inside a feature
+group, and a stack - is a toggle: click it, or focus it and press Enter or Space. The
+repository link in a header still opens GitHub rather than collapsing the section.
+
+Collapsed sections are stored in `localStorage` and survive reloads and refreshes. Only the
+collapsed ones are recorded, so anything new - a repository you just opened a PR in, a stack
+that grew a member - starts expanded. A repository collapsed in **By repo** stays open
+inside a feature group, since there it is one part of a wider change rather than the
+heading.
+
 ## Notes
 
 Each refresh costs a search call plus one open-PR listing per repository you have a PR in,
 and one review call per PR. At most 500 open PRs per repository are scanned for stack
 links, taking the most recently updated ones first. Cross-repo grouping adds no requests:
 titles, branch names and bodies all come from responses already being fetched.
+
+## License
+
+[MIT](LICENSE)

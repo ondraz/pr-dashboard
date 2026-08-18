@@ -514,10 +514,19 @@
             border-top: 1px solid var(--color-border);
         }
 
-        .feature-header + .feature-repo { border-top: none; }
+        .group-body > .feature-repo-section:first-child > .feature-repo { border-top: none; }
         .feature-repo svg { width: 14px; height: 14px; flex-shrink: 0; }
         .feature-repo a { color: var(--color-text-secondary); text-decoration: none; }
         .feature-repo a:hover { color: var(--color-link); }
+
+        /* Keeps the section readable once it is collapsed and its rows are gone. */
+        .feature-repo-count {
+            font-weight: 400;
+            background: var(--color-bg);
+            padding: 1px 8px;
+            border-radius: 20px;
+            margin-left: auto;
+        }
 
         /* Shown on a PR in the by-repo view when it has siblings in other repositories. */
         .feature-badge {
@@ -544,6 +553,41 @@
             color: var(--color-text-secondary);
             margin: 24px 0 8px;
         }
+
+        /* Collapsing. Every collapsible box carries a data-collapse-key and holds its rows in a
+           .group-body (or .stack-body), so hiding the body is all a toggle has to do. */
+        .collapse-header {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .collapse-header:focus-visible {
+            outline: 2px solid var(--color-accent);
+            outline-offset: -2px;
+        }
+
+        .collapse-header .collapse-chevron {
+            width: 12px;
+            height: 12px;
+            flex-shrink: 0;
+            color: var(--color-text-secondary);
+            transition: transform 0.15s ease;
+        }
+
+        .collapse-header:hover .collapse-chevron { color: var(--color-text); }
+
+        /* Points down when open, right when collapsed. */
+        .collapsed > .collapse-header .collapse-chevron { transform: rotate(-90deg); }
+
+        .collapsed > .group-body,
+        .collapsed > .stack-body { display: none; }
+
+        /* A collapsed header is the last thing in its box, so the separator under it would
+           otherwise read as an empty row. */
+        .repo-group.collapsed > .repo-header,
+        .feature-group.collapsed > .feature-header { border-bottom: none; }
+
+        .stack-group.collapsed > .stack-header { padding-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -668,8 +712,55 @@
             return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.492 2.492 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"></path></svg>`;
         }
 
+        function chevronIcon() {
+            return `<svg class="collapse-chevron" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"></path></svg>`;
+        }
+
         function linkIcon() {
             return `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M7.775 3.275a.75.75 0 0 0 1.06 1.06l1.25-1.25a2 2 0 1 1 2.83 2.83l-2.5 2.5a2 2 0 0 1-2.83 0 .75.75 0 0 0-1.06 1.06 3.5 3.5 0 0 0 4.95 0l2.5-2.5a3.5 3.5 0 0 0-4.95-4.95l-1.25 1.25Zm-4.69 9.64a2 2 0 0 1 0-2.83l2.5-2.5a2 2 0 0 1 2.83 0 .75.75 0 0 0 1.06-1.06 3.5 3.5 0 0 0-4.95 0l-2.5 2.5a3.5 3.5 0 0 0 4.95 4.95l1.25-1.25a.75.75 0 0 0-1.06-1.06l-1.25 1.25a2 2 0 0 1-2.83 0Z"></path></svg>`;
+        }
+
+        // Only the collapsed keys are stored, so anything new - a repo you just opened a PR in,
+        // a stack that grew a member - starts expanded.
+        const COLLAPSED_STORAGE_KEY = "collapsed_groups";
+
+        let collapsedGroups = new Set();
+        try {
+            const stored = JSON.parse(localStorage.getItem(COLLAPSED_STORAGE_KEY) || "[]");
+            if (Array.isArray(stored)) collapsedGroups = new Set(stored);
+        } catch (e) {
+            // Unreadable state is not worth failing over; start with everything expanded.
+        }
+
+        function isCollapsed(key) {
+            return collapsedGroups.has(key);
+        }
+
+        // Rendered on the header; the key itself lives on the box, so nesting resolves by
+        // walking up to the nearest collapsible ancestor.
+        function collapseAttrs(collapsed) {
+            return `role="button" tabindex="0" aria-expanded="${!collapsed}" onclick="toggleGroup(event, this)" onkeydown="collapseKeydown(event, this)"`;
+        }
+
+        function toggleGroup(event, header) {
+            if (event.target.closest && event.target.closest("a")) return; // links keep working
+            const group = header.closest("[data-collapse-key]");
+            if (!group) return;
+            const collapsed = group.classList.toggle("collapsed");
+            header.setAttribute("aria-expanded", String(!collapsed));
+            if (collapsed) collapsedGroups.add(group.dataset.collapseKey);
+            else collapsedGroups.delete(group.dataset.collapseKey);
+            try {
+                localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...collapsedGroups]));
+            } catch (e) {
+                // Collapsing still works for this session if the state cannot be persisted.
+            }
+        }
+
+        function collapseKeydown(event, header) {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            toggleGroup(event, header);
         }
 
         function esc(str) {
@@ -1063,7 +1154,13 @@
             const btn = document.querySelector('.filter-btn[data-group="feature"]');
             if (btn) setGrouping("feature", btn);
             const target = document.getElementById(featureId(key));
-            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+            if (!target) return;
+            // Jumping to a group the user had collapsed should still show it.
+            if (target.classList.contains("collapsed")) {
+                const header = target.querySelector(".collapse-header");
+                if (header) toggleGroup({ target: header }, header);
+            }
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
         }
 
         function stackPosHtml(node) {
@@ -1143,8 +1240,13 @@
         }
 
         function stackHtml(stack, prsByNumber) {
-            let html = `<div class="stack-group">
-                <div class="stack-header">
+            // Keyed by the bottom PR of the chain, so the same stack keeps its state in both
+            // the by-repo and the by-feature view.
+            const key = `stack:${stack.ordered[0].repoFullName}#${stack.id}`;
+            const collapsed = isCollapsed(key);
+            let html = `<div class="stack-group${collapsed ? " collapsed" : ""}" data-collapse-key="${esc(key)}">
+                <div class="stack-header collapse-header" ${collapseAttrs(collapsed)}>
+                    ${chevronIcon()}
                     ${branchIcon()}
                     <span>Stack of ${stack.size}</span>
                     ${stack.rootBaseRef ? `<span class="stack-onto">onto ${esc(stack.rootBaseRef)}</span>` : ''}
@@ -1181,13 +1283,16 @@
 
         function repoGroupHtml(repo, prs, renderedStacks) {
             const repoShort = repo.split("/")[1];
-            return `<div class="repo-group">
-                <div class="repo-header">
+            const key = `repo:${repo}`;
+            const collapsed = isCollapsed(key);
+            return `<div class="repo-group${collapsed ? " collapsed" : ""}" data-collapse-key="${esc(key)}">
+                <div class="repo-header collapse-header" ${collapseAttrs(collapsed)}>
+                    ${chevronIcon()}
                     ${repoIcon()}
                     <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a></span>
                     <span class="repo-pr-count">${prs.length}</span>
                 </div>
-                ${repoBodyHtml(prs, renderedStacks)}
+                <div class="group-body">${repoBodyHtml(prs, renderedStacks)}</div>
             </div>`;
         }
 
@@ -1250,13 +1355,17 @@
 
         function featureGroupHtml(group, renderedStacks) {
             const prCount = group.prs.length + group.context.length;
-            let html = `<div class="feature-group" id="${esc(featureId(group.key))}">
-                <div class="feature-header">
+            const key = `feature:${group.key}`;
+            const collapsed = isCollapsed(key);
+            let html = `<div class="feature-group${collapsed ? " collapsed" : ""}" id="${esc(featureId(group.key))}" data-collapse-key="${esc(key)}">
+                <div class="feature-header collapse-header" ${collapseAttrs(collapsed)}>
+                    ${chevronIcon()}
                     ${linkIcon()}
                     <span class="feature-key">${esc(group.label)}</span>
                     <span class="feature-kind">${esc(FEATURE_KIND_LABEL[group.kind] || "")}</span>
                     <span class="feature-count">${group.repos.size} repos &middot; ${prCount} PRs</span>
-                </div>`;
+                </div>
+                <div class="group-body">`;
 
             const contextByRepo = new Map();
             for (const node of group.context) {
@@ -1272,11 +1381,6 @@
 
             for (const [repo, prs] of repos) {
                 const repoShort = repo.split("/")[1];
-                html += `<div class="feature-repo">
-                    ${repoIcon()}
-                    <a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a>
-                </div>`;
-                html += repoBodyHtml(prs, renderedStacks);
 
                 // A member already drawn inside a stack chain must not repeat below it.
                 const inStacks = new Set();
@@ -1287,10 +1391,25 @@
                 const context = (contextByRepo.get(repo) || [])
                     .filter(node => !inStacks.has(node.number))
                     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+
+                // Distinct from the by-repo view's key: collapsing one part of a cross-repo
+                // change should not collapse that repo everywhere else.
+                const repoKey = `feature-repo:${group.key}::${repo}`;
+                const repoCollapsed = isCollapsed(repoKey);
+                html += `<div class="feature-repo-section${repoCollapsed ? " collapsed" : ""}" data-collapse-key="${esc(repoKey)}">
+                    <div class="feature-repo collapse-header" ${collapseAttrs(repoCollapsed)}>
+                        ${chevronIcon()}
+                        ${repoIcon()}
+                        <a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a>
+                        <span class="feature-repo-count">${prs.length + context.length}</span>
+                    </div>
+                    <div class="group-body">`;
+                html += repoBodyHtml(prs, renderedStacks);
                 for (const node of context) html += contextItemHtml(node);
+                html += `</div></div>`;
             }
 
-            return `${html}</div>`;
+            return `${html}</div></div>`;
         }
 
         function renderPRs() {
