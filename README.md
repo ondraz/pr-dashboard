@@ -20,6 +20,9 @@ straight from the browser with a token you provide.
 - Age filter: recently updated (last two weeks) or all time
 - Collapsible feature, repository and stack sections, remembered across reloads
 - Configurable auto-refresh: 1m, 5m, 30m, 1h, or on tab focus
+- Every refresh, manual or automatic, shows a progress strip across the top of the window,
+  a spinner in the Refresh button, and the phase it is in (`Scanning repositories... 3/8`)
+  where `Updated ... ago` sits; the previous list stays on screen, faded, until it lands
 - Light and dark theme, following the system setting
 
 ## Cross-repo grouping
