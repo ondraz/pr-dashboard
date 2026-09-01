@@ -16,6 +16,8 @@ straight from the browser with a token you provide.
 - Cross-repo changes group into one block, so a feature implemented across several
   repositories reads as one unit (see [Cross-repo grouping](#cross-repo-grouping))
 - Review status: approved, changes requested, or pending with the requested reviewers
+- Auto-merge badge, naming the merge method, on any PR GitHub will land by itself once its
+  checks and reviews pass
 - Draft state, with filters for all / ready / draft
 - Age filter: recently updated (last two weeks) or all time
 - Collapsible feature, repository and stack sections, remembered across reloads
