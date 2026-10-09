@@ -25,6 +25,9 @@
             --color-review-changes-bg: #fff8c5;
             --color-review-changes-text: #9a6700;
             --color-review-changes-border: #d4a72c;
+            --color-unresolved-bg: #ffebe9;
+            --color-unresolved-text: #cf222e;
+            --color-unresolved-border: #ffcecb;
             --color-ci-failure: #cf222e;
             --color-ci-pending: #9a6700;
             --color-stack-accent: #8250df;
@@ -55,6 +58,9 @@
                 --color-review-changes-bg: #3d2e00;
                 --color-review-changes-text: #d29922;
                 --color-review-changes-border: #5a4300;
+                --color-unresolved-bg: #3d1f20;
+                --color-unresolved-text: #f85149;
+                --color-unresolved-border: #6e3630;
                 --color-ci-failure: #f85149;
                 --color-ci-pending: #d29922;
                 --color-stack-accent: #a371f7;
@@ -423,6 +429,27 @@
 
         .automerge-badge svg { width: 11px; height: 11px; }
 
+        /* Review threads nobody has resolved - the work still owed on a PR, and so the thing
+           that decides which one to hand back for another pass. */
+        .unresolved-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--color-unresolved-text);
+            background: var(--color-unresolved-bg);
+            border: 1px solid var(--color-unresolved-border);
+            border-radius: 20px;
+            padding: 1px 8px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .unresolved-badge:hover { border-color: var(--color-unresolved-text); }
+        .unresolved-badge .unresolved-icon { width: 11px; height: 11px; flex-shrink: 0; }
+
         .pr-updated {
             flex-shrink: 0;
             font-size: 12px;
@@ -756,6 +783,9 @@
 
     <script>
         const REPO_PR_PAGE_CAP = 5; // at most 500 open PRs per repo are scanned for stack links
+        const REVIEW_BATCH_SIZE = 10; // PRs per GraphQL review query
+        const THREAD_PAGE_CAP = 5; // at most 500 review threads are counted per PR
+        const REVIEW_HISTORY_CAP = 20; // reviews read per PR, newest last, to find Copilot's latest
 
         let allPRs = [];
         let allRepoNodes = [];
@@ -826,6 +856,10 @@
 
         function mergeIcon() {
             return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z"></path></svg>`;
+        }
+
+        function commentIcon() {
+            return `<svg class="unresolved-icon" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.75 1h8.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 10.25 10H7.061l-2.574 2.573A1.458 1.458 0 0 1 2 11.543V10h-.25A1.75 1.75 0 0 1 0 8.25v-5.5C0 1.784.784 1 1.75 1ZM1.5 2.75v5.5c0 .138.112.25.25.25h1a.75.75 0 0 1 .75.75v2.19l2.72-2.72a.749.749 0 0 1 .53-.22h3.5a.25.25 0 0 0 .25-.25v-5.5a.25.25 0 0 0-.25-.25h-8.5a.25.25 0 0 0-.25.25Zm13 2a.25.25 0 0 0-.25-.25h-.5a.75.75 0 0 1 0-1.5h.5c.966 0 1.75.784 1.75 1.75v5.5A1.75 1.75 0 0 1 14.25 12H14v1.543a1.458 1.458 0 0 1-2.487 1.03L9.22 12.28a.749.749 0 0 1 1.06-1.06l2.22 2.22v-2.19a.75.75 0 0 1 .75-.75h1a.25.25 0 0 0 .25-.25Z"></path></svg>`;
         }
 
         function repoIcon() {
@@ -987,6 +1021,167 @@
                 if (data.length < 100) break;
             }
             return out;
+        }
+
+        const COPILOT_RE = /copilot/i;
+        const COPILOT_APPROVAL_RE = /approval recommended|looks good|no (?:issues|comments)/i;
+        // The title Copilot's newer bodies put above the verdict, and the reviews that read
+        // nothing at all - neither says anything is owed.
+        const COPILOT_OVERVIEW_TITLE_RE = /^copilot review overview$/i;
+        const COPILOT_NO_REVIEW_RE = /^copilot (?:wasn't able to review|encountered an error)/i;
+
+        // Copilot names the verdict it reached in a heading - "Changes recommended", "Needs a
+        // closer look", "Approval recommended". Newer bodies open with an HTML marker comment
+        // and a "Copilot review overview" title and carry the verdict in the heading below;
+        // older ones lead with the verdict itself. Neither the heading marks nor the status
+        // emoji in front of the words are part of it.
+        function copilotVerdict(review) {
+            if (!review) return null;
+            const lines = (review.body || "")
+                .replace(/<!--[\s\S]*?-->/g, "")
+                .split("\n")
+                .map(part => part.trim())
+                .filter(Boolean);
+            const strip = (line) => line
+                .replace(/^#+\s*/, "")
+                .replace(/^[^\p{L}\p{N}]+/u, "")
+                .replace(/"/g, "")
+                .trim();
+            const headings = lines.filter(line => line.startsWith("#"));
+            const label = (headings.length ? headings : lines)
+                .map(strip)
+                .find(text => text && !COPILOT_OVERVIEW_TITLE_RE.test(text));
+            if (!label || COPILOT_NO_REVIEW_RE.test(label)) return null;
+            return {
+                id: review.id,
+                databaseId: review.databaseId,
+                label: label.slice(0, 60),
+                approving: review.state === "APPROVED" || COPILOT_APPROVAL_RE.test(label),
+            };
+        }
+
+        // What a PR still owes: review threads nobody has resolved, plus Copilot's latest verdict
+        // when it is not an approval - a "needs a closer look" carries no inline comment, so it
+        // leaves no thread behind and would otherwise be invisible here. Neither resolution state
+        // nor the verdict exists in REST, so this is the one GraphQL call the dashboard makes.
+        // PRs are batched into a single query by alias; a failure leaves the counts unknown and
+        // the badge simply does not render.
+        async function fetchOutstandingWork(prs, token) {
+            const counts = new Map();
+            if (prs.length === 0) return counts;
+
+            const headers = {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+            };
+
+            const post = async (query) => {
+                const res = await fetch("https://api.github.com/graphql", {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify({ query }),
+                });
+                if (!res.ok) throw new Error(`GraphQL request failed (${res.status})`);
+                const body = await res.json();
+                if (body.errors && !body.data) {
+                    throw new Error(body.errors.map(e => e.message).join("; "));
+                }
+                // A repo the token cannot see nulls its own alias and leaves the rest intact.
+                if (body.errors) console.warn("Partial GraphQL errors reading review state:", body.errors);
+                return body.data || {};
+            };
+
+            const threadsField = (cursor) => `reviewThreads(first: 100${cursor ? `, after: ${JSON.stringify(cursor)}` : ""}) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes {
+                        isResolved
+                        comments(first: 1) { totalCount nodes { pullRequestReview { id } } }
+                    }
+                }`;
+            const reviewsField = `reviews(last: ${REVIEW_HISTORY_CAP}) { nodes { id databaseId state body author { login } } }`;
+
+            const entryFor = (key) => {
+                if (!counts.has(key)) counts.set(key, { threads: 0, comments: 0, threadedReviews: new Set(), copilot: null });
+                return counts.get(key);
+            };
+
+            const tally = (key, threads) => {
+                const entry = entryFor(key);
+                for (const thread of threads) {
+                    if (!thread) continue;
+                    // Which review the thread hangs off, resolved or not: a verdict that left
+                    // comments is settled by them - counted while open, done once resolved.
+                    const comment = thread.comments && thread.comments.nodes ? thread.comments.nodes[0] : null;
+                    if (comment && comment.pullRequestReview) entry.threadedReviews.add(comment.pullRequestReview.id);
+                    if (thread.isResolved) continue;
+                    entry.threads++;
+                    entry.comments += thread.comments ? thread.comments.totalCount : 1;
+                }
+            };
+
+            let done = 0;
+            for (let i = 0; i < prs.length; i += REVIEW_BATCH_SIZE) {
+                const batch = prs.slice(i, i + REVIEW_BATCH_SIZE);
+                const query = `query {${batch.map((pr, n) => {
+                    const [owner, name] = pr.repoFullName.split("/");
+                    return `
+                        pr${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+                            pullRequest(number: ${parseInt(pr.number)}) {
+                                ${threadsField(null)}
+                                ${reviewsField}
+                            }
+                        }`;
+                }).join("")}
+                }`;
+
+                const data = await post(query);
+                const overflowed = [];
+                batch.forEach((pr, n) => {
+                    const alias = data[`pr${n}`];
+                    const pullRequest = alias ? alias.pullRequest : null;
+                    if (!pullRequest) return;
+                    const key = `${pr.repoFullName}#${pr.number}`;
+
+                    const threads = pullRequest.reviewThreads;
+                    if (threads) {
+                        tally(key, threads.nodes || []);
+                        if (threads.pageInfo && threads.pageInfo.hasNextPage) {
+                            overflowed.push({ pr, cursor: threads.pageInfo.endCursor });
+                        }
+                    }
+
+                    // Ordered oldest to newest, so the last Copilot review is the standing one:
+                    // every push gets its own, and only the latest describes the code as it is.
+                    const reviews = pullRequest.reviews ? pullRequest.reviews.nodes || [] : [];
+                    const latest = reviews.filter(r => r && r.author && COPILOT_RE.test(r.author.login)).pop();
+                    entryFor(key).copilot = copilotVerdict(latest);
+                });
+
+                // More than a page of threads on one PR is rare; page it on its own rather than
+                // sizing every batch for the worst case.
+                for (const { pr, cursor } of overflowed) {
+                    const [owner, name] = pr.repoFullName.split("/");
+                    let after = cursor;
+                    for (let page = 1; page < THREAD_PAGE_CAP && after; page++) {
+                        const pageData = await post(`query {
+                            repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {
+                                pullRequest(number: ${parseInt(pr.number)}) { ${threadsField(after)} }
+                            }
+                        }`);
+                        const threads = pageData.repository && pageData.repository.pullRequest
+                            ? pageData.repository.pullRequest.reviewThreads
+                            : null;
+                        if (!threads) break;
+                        tally(`${pr.repoFullName}#${pr.number}`, threads.nodes || []);
+                        after = threads.pageInfo && threads.pageInfo.hasNextPage ? threads.pageInfo.endCursor : null;
+                    }
+                }
+
+                done += batch.length;
+                setRefreshProgress(`Counting unresolved comments\u2026 ${done}/${prs.length}`);
+            }
+
+            return counts;
         }
 
         // Two open PRs are stacked when one's base branch is the other's head branch. Chains
@@ -1237,6 +1432,23 @@
                     setRefreshProgress(`Loading reviews… ${Math.min(enriched.length, prs.length)}/${prs.length}`);
                 }
 
+                let outstanding = new Map();
+                try {
+                    outstanding = await fetchOutstandingWork(enriched, token);
+                } catch (err) {
+                    console.warn("Failed to read unresolved review state:", err);
+                }
+                for (const pr of enriched) {
+                    const entry = outstanding.get(`${pr.repoFullName}#${pr.number}`);
+                    // Only a verdict that left no inline comment counts on its own.
+                    const verdict = entry && entry.copilot && !entry.copilot.approving
+                        && !entry.threadedReviews.has(entry.copilot.id) ? entry.copilot : null;
+                    pr.unresolvedThreads = entry ? entry.threads : 0;
+                    pr.unresolvedComments = entry ? entry.comments : 0;
+                    pr.copilotVerdict = verdict;
+                    pr.unresolved = pr.unresolvedThreads + (verdict ? 1 : 0);
+                }
+
                 allPRs = enriched;
                 lastFetchTime = new Date();
                 document.getElementById("total-count").textContent = allPRs.length;
@@ -1284,6 +1496,34 @@
             const method = info.method ? ` (${esc(info.method)})` : "";
             const by = info.enabledBy ? ` by ${esc(info.enabledBy)}` : "";
             return `<span class="automerge-badge" title="Auto-merge enabled${method}${by} - merges on its own once checks and reviews pass">${mergeIcon()}Auto-merge</span>`;
+        }
+
+        // What is still owed on a PR: review threads left open - the way GitHub counts its
+        // "unresolved conversations" - plus Copilot's standing verdict when it asked for
+        // something and left no comment to resolve.
+        function unresolvedBadgeHtml(pr) {
+            if (!pr.unresolved) return "";
+            const parts = [];
+            if (pr.unresolvedThreads) {
+                const comments = pr.unresolvedComments || pr.unresolvedThreads;
+                parts.push(`${pr.unresolvedThreads} unresolved review ${pr.unresolvedThreads === 1 ? "thread" : "threads"}`
+                    + ` (${comments} ${comments === 1 ? "comment" : "comments"})`);
+            }
+            if (pr.copilotVerdict) parts.push(`Copilot: ${pr.copilotVerdict.label}`);
+            // With nothing open inline, the verdict itself is what there is to read.
+            const href = !pr.unresolvedThreads && pr.copilotVerdict
+                ? `${pr.html_url}#pullrequestreview-${pr.copilotVerdict.databaseId}`
+                : `${pr.html_url}/files`;
+            return `<a class="unresolved-badge" href="${esc(href)}" target="_blank" rel="noopener noreferrer"
+                title="${esc(parts.join(" - "))}"
+            >${commentIcon()}${pr.unresolved} unresolved</a>`;
+        }
+
+        // The same total for a whole group, so a collapsed section still says there is work in it.
+        function unresolvedTotalHtml(prs) {
+            const total = prs.reduce((sum, pr) => sum + (pr.unresolved || 0), 0);
+            if (!total) return "";
+            return `<span class="unresolved-badge" title="${total} unresolved review ${total === 1 ? "thread" : "threads"} in this group">${commentIcon()}${total}</span>`;
         }
 
         function featureBadgeHtml(pr) {
@@ -1370,6 +1610,7 @@
                         #${parseInt(pr.number)} opened ${timeAgo(pr.created_at)}${baseMetaHtml(node)}
                     </div>
                 </div>
+                ${unresolvedBadgeHtml(pr)}
                 ${reviewBadge}
                 <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
             </div>`;
@@ -1446,6 +1687,7 @@
                     ${chevronIcon()}
                     ${repoIcon()}
                     <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a></span>
+                    ${unresolvedTotalHtml(prs)}
                     <span class="repo-pr-count">${prs.length}</span>
                 </div>
                 <div class="group-body">${repoBodyHtml(prs, renderedStacks)}</div>
@@ -1519,6 +1761,7 @@
                     ${linkIcon()}
                     <span class="feature-key">${esc(group.label)}</span>
                     <span class="feature-kind">${esc(FEATURE_KIND_LABEL[group.kind] || "")}</span>
+                    ${unresolvedTotalHtml(group.prs)}
                     <span class="feature-count">${group.repos.size} repos &middot; ${prCount} PRs</span>
                 </div>
                 <div class="group-body">`;
@@ -1557,6 +1800,7 @@
                         ${chevronIcon()}
                         ${repoIcon()}
                         <a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a>
+                        ${unresolvedTotalHtml(prs)}
                         <span class="feature-repo-count">${prs.length + context.length}</span>
                     </div>
                     <div class="group-body">`;

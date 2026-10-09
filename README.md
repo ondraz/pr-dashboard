@@ -16,6 +16,9 @@ straight from the browser with a token you provide.
 - Cross-repo changes group into one block, so a feature implemented across several
   repositories reads as one unit (see [Cross-repo grouping](#cross-repo-grouping))
 - Review status: approved, changes requested, or pending with the requested reviewers
+- Unresolved review threads counted per PR, Copilot's standing verdict included, and
+  totalled on every repository and feature header so a collapsed section still shows there
+  is work left in it (see [Unresolved comments](#unresolved-comments))
 - Auto-merge badge, naming the merge method, on any PR GitHub will land by itself once its
   checks and reviews pass
 - Draft state, with filters for all / ready / draft
@@ -61,6 +64,32 @@ first, split by repository inside, and collects everything else under Single-rep
 The grouping is display only. It does not gate merges, and the dashboard never writes to
 GitHub - the token is read-only.
 
+## Unresolved comments
+
+A PR carries an `N unresolved` badge counting what it still owes, which is the one thing
+that says which PR needs another round of fixes. The badge links to the diff, and the
+tooltip breaks the number down. Two things go into it.
+
+**Review threads nobody has resolved**, the same number GitHub shows as unresolved
+conversations, whoever wrote them - Copilot's inline comments are threads like anyone
+else's. The tooltip also gives how many comments sit inside those threads, so one thread
+with a long back-and-forth does not read as five separate things to do.
+
+**Copilot's standing verdict**, when it is not an approval. Copilot reviews every push and
+names what it concluded in a heading - `Changes recommended`, `Needs a closer look`,
+`Approval recommended` - and only the newest one describes the code as it is now. A verdict
+that asked for something but generated no inline comment leaves no thread to resolve and
+would otherwise be invisible, so it counts as one item and the badge links to the review
+itself. A verdict that did leave inline comments is left out: while they are open they
+already count, and once they are all resolved the verdict has been answered and the badge
+drops to zero. A review that read
+no files, or failed outright, is not a verdict and counts as nothing.
+
+Neither resolution state nor the verdict exists in the REST API, so this is the one part of
+the dashboard that goes through GraphQL. The token needs nothing extra: the same
+`Pull requests` read access covers it. If the query fails the badge is simply absent, the
+rest of the dashboard is unaffected, and the reason is logged to the browser console.
+
 ## Setup
 
 1. Go to [GitHub fine-grained tokens](https://github.com/settings/personal-access-tokens/new)
@@ -103,8 +132,9 @@ heading.
 ## Notes
 
 Each refresh costs a search call plus one open-PR listing per repository you have a PR in,
-and one review call per PR. At most 500 open PRs per repository are scanned for stack
-links, taking the most recently updated ones first. Cross-repo grouping adds no requests:
+one review call per PR, and one GraphQL query per 10 PRs for the unresolved counts. At most 500 open PRs per repository are scanned for stack
+links, taking the most recently updated ones first. At most 500 review threads are counted
+per PR, and Copilot's verdict is looked for in that PR's 20 most recent reviews. Cross-repo grouping adds no requests:
 titles, branch names and bodies all come from responses already being fetched.
 
 ## License
