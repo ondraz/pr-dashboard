@@ -36,6 +36,8 @@
             --color-feature-bg: #ffeff7;
             --color-automerge-accent: #1a7f37;
             --color-automerge-bg: #dafbe1;
+            --color-mergequeue-accent: #9a6700;
+            --color-mergequeue-bg: #fff8c5;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -69,6 +71,8 @@
                 --color-feature-bg: #2d1524;
                 --color-automerge-accent: #3fb950;
                 --color-automerge-bg: #12261e;
+                --color-mergequeue-accent: #d29922;
+                --color-mergequeue-bg: #2e2412;
             }
         }
 
@@ -428,6 +432,12 @@
         }
 
         .automerge-badge svg { width: 11px; height: 11px; }
+
+        .automerge-badge.in-queue {
+            color: var(--color-mergequeue-accent);
+            background: var(--color-mergequeue-bg);
+            border-color: var(--color-mergequeue-accent);
+        }
 
         /* Review threads nobody has resolved - the work still owed on a PR, and so the thing
            that decides which one to hand back for another pass. */
@@ -1063,9 +1073,9 @@
         // What a PR still owes: review threads nobody has resolved, plus Copilot's latest verdict
         // when it is not an approval - a "needs a closer look" carries no inline comment, so it
         // leaves no thread behind and would otherwise be invisible here. Neither resolution state
-        // nor the verdict exists in REST, so this is the one GraphQL call the dashboard makes.
-        // PRs are batched into a single query by alias; a failure leaves the counts unknown and
-        // the badge simply does not render.
+        // nor the verdict exists in REST, so this is the one GraphQL call the dashboard makes;
+        // merge-queue membership rides along for the same reason. PRs are batched into a single
+        // query by alias; a failure leaves the counts unknown and the badge simply does not render.
         async function fetchOutstandingWork(prs, token) {
             const counts = new Map();
             if (prs.length === 0) return counts;
@@ -1101,7 +1111,7 @@
             const reviewsField = `reviews(last: ${REVIEW_HISTORY_CAP}) { nodes { id databaseId state body author { login } } }`;
 
             const entryFor = (key) => {
-                if (!counts.has(key)) counts.set(key, { threads: 0, comments: 0, threadedReviews: new Set(), copilot: null });
+                if (!counts.has(key)) counts.set(key, { threads: 0, comments: 0, threadedReviews: new Set(), copilot: null, mergeQueue: null });
                 return counts.get(key);
             };
 
@@ -1129,6 +1139,7 @@
                             pullRequest(number: ${parseInt(pr.number)}) {
                                 ${threadsField(null)}
                                 ${reviewsField}
+                                mergeQueueEntry { position state }
                             }
                         }`;
                 }).join("")}
@@ -1155,6 +1166,7 @@
                     const reviews = pullRequest.reviews ? pullRequest.reviews.nodes || [] : [];
                     const latest = reviews.filter(r => r && r.author && COPILOT_RE.test(r.author.login)).pop();
                     entryFor(key).copilot = copilotVerdict(latest);
+                    entryFor(key).mergeQueue = pullRequest.mergeQueueEntry || null;
                 });
 
                 // More than a page of threads on one PR is rare; page it on its own rather than
@@ -1447,6 +1459,7 @@
                     pr.unresolvedComments = entry ? entry.comments : 0;
                     pr.copilotVerdict = verdict;
                     pr.unresolved = pr.unresolvedThreads + (verdict ? 1 : 0);
+                    pr.mergeQueue = entry ? entry.mergeQueue : null;
                 }
 
                 allPRs = enriched;
@@ -1491,7 +1504,15 @@
         // view advertise that it is one part of a wider change without re-deriving the groups.
         let featureSpan = new Map();
 
-        function autoMergeBadgeHtml(info) {
+        // A queued PR keeps auto_merge armed in REST, so the queue entry wins over the badge.
+        function mergeQueueBadgeHtml(entry) {
+            const position = Number.isInteger(entry.position) ? ` #${entry.position}` : "";
+            const state = entry.state ? ` (${esc(entry.state.toLowerCase().replace(/_/g, " "))})` : "";
+            return `<span class="automerge-badge in-queue" title="In the merge queue${position}${state}">${mergeIcon()}Merge queue${position}</span>`;
+        }
+
+        function autoMergeBadgeHtml(info, mergeQueue) {
+            if (mergeQueue) return mergeQueueBadgeHtml(mergeQueue);
             if (!info) return "";
             const method = info.method ? ` (${esc(info.method)})` : "";
             const by = info.enabledBy ? ` by ${esc(info.enabledBy)}` : "";
@@ -1602,7 +1623,7 @@
                         ${stackPosHtml(node)}
                         <a href="${esc(pr.html_url)}" target="_blank" rel="noopener noreferrer">${esc(pr.title)}</a>
                         ${pr.isDraft ? '<span class="draft-badge">Draft</span>' : ''}
-                        ${autoMergeBadgeHtml(pr.autoMerge)}
+                        ${autoMergeBadgeHtml(pr.autoMerge, pr.mergeQueue)}
                         ${featureBadgeHtml(pr)}
                         ${labels ? `<span class="pr-labels">${labels}</span>` : ''}
                     </div>

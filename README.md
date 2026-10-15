@@ -20,7 +20,7 @@ straight from the browser with a token you provide.
   totalled on every repository and feature header so a collapsed section still shows there
   is work left in it (see [Unresolved comments](#unresolved-comments))
 - Auto-merge badge, naming the merge method, on any PR GitHub will land by itself once its
-  checks and reviews pass
+  checks and reviews pass; once the PR enters a merge queue it shows `Merge queue #N` instead
 - Draft state, with filters for all / ready / draft
 - Age filter: recently updated (last two weeks) or all time
 - Collapsible feature, repository and stack sections, remembered across reloads
