@@ -1671,7 +1671,8 @@
                 </div>
                 <div class="stack-body">`;
 
-            for (const node of stack.ordered) {
+            // Drawn tip first, so the PR on the base branch sits at the bottom, as in `git log`.
+            for (const node of stack.ordered.slice().reverse()) {
                 const pr = prsByNumber.get(node.number);
                 html += pr ? prItemHtml(pr) : contextItemHtml(node);
             }

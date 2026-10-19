@@ -11,8 +11,8 @@ straight from the browser with a token you provide.
 ## Features
 
 - Your open PRs across all repositories, grouped by repository
-- Stacked PRs render as a single connected chain in merge order, each one showing the PR
-  it is based on
+- Stacked PRs render as a single connected chain with the base at the bottom, each one
+  showing the PR it is based on
 - Cross-repo changes group into one block, so a feature implemented across several
   repositories reads as one unit (see [Cross-repo grouping](#cross-repo-grouping))
 - Review status: approved, changes requested, or pending with the requested reviewers
