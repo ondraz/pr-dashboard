@@ -796,6 +796,11 @@
         const REVIEW_BATCH_SIZE = 10; // PRs per GraphQL review query
         const THREAD_PAGE_CAP = 5; // at most 500 review threads are counted per PR
         const REVIEW_HISTORY_CAP = 20; // reviews read per PR, newest last, to find Copilot's latest
+        // Requests in flight per pool. The three pools run at once, so a refresh never has more
+        // than their sum open - far under GitHub's secondary limit of 100 concurrent requests.
+        const REPO_SCAN_CONCURRENCY = 6;
+        const PR_REQUEST_CONCURRENCY = 8;
+        const GRAPHQL_CONCURRENCY = 3;
 
         let allPRs = [];
         let allRepoNodes = [];
@@ -1007,6 +1012,27 @@
             return `${owner}:${side.ref}`;
         }
 
+        // Returns run(task): task starts once fewer than `limit` earlier tasks are still running.
+        // Hold a slot only around the request itself - a task that waits on the same limiter
+        // from inside its slot can deadlock the pool.
+        function createLimiter(limit) {
+            let active = 0;
+            const queue = [];
+            const next = () => {
+                if (active >= limit || queue.length === 0) return;
+                active++;
+                const { task, resolve, reject } = queue.shift();
+                Promise.resolve()
+                    .then(task)
+                    .then(resolve, reject)
+                    .finally(() => { active--; next(); });
+            };
+            return (task) => new Promise((resolve, reject) => {
+                queue.push({ task, resolve, reject });
+                next();
+            });
+        }
+
         // Every open PR in the repo, so a stack is visible even when part of it belongs to
         // someone else. Degrades to whatever was fetched if the listing fails. Sorted by last
         // update rather than the default creation order: when a repo has more open PRs than the
@@ -1076,7 +1102,7 @@
         // nor the verdict exists in REST, so this is the one GraphQL call the dashboard makes;
         // merge-queue membership rides along for the same reason. PRs are batched into a single
         // query by alias; a failure leaves the counts unknown and the badge simply does not render.
-        async function fetchOutstandingWork(prs, token) {
+        async function fetchOutstandingWork(prs, token, onProgress) {
             const counts = new Map();
             if (prs.length === 0) return counts;
 
@@ -1085,7 +1111,8 @@
                 "Content-Type": "application/json",
             };
 
-            const post = async (query) => {
+            const limit = createLimiter(GRAPHQL_CONCURRENCY);
+            const post = (query) => limit(async () => {
                 const res = await fetch("https://api.github.com/graphql", {
                     method: "POST",
                     headers,
@@ -1099,7 +1126,7 @@
                 // A repo the token cannot see nulls its own alias and leaves the rest intact.
                 if (body.errors) console.warn("Partial GraphQL errors reading review state:", body.errors);
                 return body.data || {};
-            };
+            });
 
             const threadsField = (cursor) => `reviewThreads(first: 100${cursor ? `, after: ${JSON.stringify(cursor)}` : ""}) {
                     pageInfo { hasNextPage endCursor }
@@ -1129,9 +1156,11 @@
                 }
             };
 
+            const batches = [];
+            for (let i = 0; i < prs.length; i += REVIEW_BATCH_SIZE) batches.push(prs.slice(i, i + REVIEW_BATCH_SIZE));
+
             let done = 0;
-            for (let i = 0; i < prs.length; i += REVIEW_BATCH_SIZE) {
-                const batch = prs.slice(i, i + REVIEW_BATCH_SIZE);
+            await Promise.all(batches.map(async (batch) => {
                 const query = `query {${batch.map((pr, n) => {
                     const [owner, name] = pr.repoFullName.split("/");
                     return `
@@ -1171,7 +1200,7 @@
 
                 // More than a page of threads on one PR is rare; page it on its own rather than
                 // sizing every batch for the worst case.
-                for (const { pr, cursor } of overflowed) {
+                await Promise.all(overflowed.map(async ({ pr, cursor }) => {
                     const [owner, name] = pr.repoFullName.split("/");
                     let after = cursor;
                     for (let page = 1; page < THREAD_PAGE_CAP && after; page++) {
@@ -1187,11 +1216,11 @@
                         tally(`${pr.repoFullName}#${pr.number}`, threads.nodes || []);
                         after = threads.pageInfo && threads.pageInfo.hasNextPage ? threads.pageInfo.endCursor : null;
                     }
-                }
+                }));
 
                 done += batch.length;
-                setRefreshProgress(`Counting unresolved comments\u2026 ${done}/${prs.length}`);
-            }
+                if (onProgress) onProgress(done);
+            }));
 
             return counts;
         }
@@ -1358,98 +1387,113 @@
                     page++;
                 }
 
-                const repoNames = [...new Set(
-                    prs.map(pr => pr.repository_url.replace("https://api.github.com/repos/", ""))
-                )];
+                const repoOf = (pr) => pr.repository_url.replace("https://api.github.com/repos/", "");
+                const repoNames = [...new Set(prs.map(repoOf))];
+
+                const progress = createRefreshProgress([
+                    ["repos", "repositories", repoNames.length],
+                    ["reviews", "reviews", prs.length],
+                    ["comments", "comments", prs.length],
+                ]);
+
+                // The unresolved counts need nothing but repo and number, so the GraphQL batches
+                // run alongside the repository scan instead of waiting for it.
+                const outstandingPromise = fetchOutstandingWork(
+                    prs.map(pr => ({ repoFullName: repoOf(pr), number: pr.number })),
+                    token,
+                    done => progress.set("comments", done),
+                ).catch(err => {
+                    console.warn("Failed to read unresolved review state:", err);
+                    progress.set("comments", prs.length);
+                    return new Map();
+                });
 
                 // One listing per repo covers both the stack graph and the draft/reviewer state,
-                // which saves a per-PR details call for every PR it contains.
-                const stackIndexes = {};
-                let reposDone = 0;
-                setRefreshProgress(`Scanning repositories… 0/${repoNames.length}`);
-                await Promise.all(repoNames.map(async (repo) => {
-                    stackIndexes[repo] = buildStackIndex(await fetchRepoOpenPRs(repo, headers), repo);
-                    reposDone++;
-                    setRefreshProgress(`Scanning repositories… ${reposDone}/${repoNames.length}`);
+                // which saves a per-PR details call for every PR it contains. Each repo resolves
+                // on its own, so its PRs move on without waiting for the slowest repo.
+                const limitRepoScan = createLimiter(REPO_SCAN_CONCURRENCY);
+                const stackIndexes = new Map(repoNames.map(repo => [repo, limitRepoScan(async () => {
+                    try {
+                        return buildStackIndex(await fetchRepoOpenPRs(repo, headers), repo);
+                    } catch (err) {
+                        console.warn(`Failed to build the stack index for ${repo}:`, err);
+                        return new Map();
+                    } finally {
+                        progress.advance("repos");
+                    }
+                })]));
+
+                const limitPRRequest = createLimiter(PR_REQUEST_CONCURRENCY);
+                const getJSON = (url, label) => limitPRRequest(async () => {
+                    const res = await fetch(url, { headers });
+                    return res.ok ? res.json() : null;
+                }).catch(err => {
+                    console.warn(`Failed to fetch ${label}:`, err);
+                    return null;
+                });
+
+                const enriched = await Promise.all(prs.map(async (pr) => {
+                    const repoFullName = repoOf(pr);
+                    // Reviews do not depend on the listing, so they start before it lands.
+                    const reviewsPromise = getJSON(
+                        `https://api.github.com/repos/${repoFullName}/pulls/${pr.number}/reviews`,
+                        `reviews for ${repoFullName}#${pr.number}`,
+                    );
+                    const stackNode = (await stackIndexes.get(repoFullName)).get(pr.number) || null;
+
+                    let isDraft = stackNode ? stackNode.draft : !!pr.draft;
+                    let autoMerge = stackNode ? stackNode.autoMerge : null;
+                    let requestedReviewers = stackNode ? stackNode.requestedReviewers : [];
+                    let detailsNode = null;
+                    if (!stackNode) {
+                        const details = await getJSON(
+                            `https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`,
+                            `details for ${repoFullName}#${pr.number}`,
+                        );
+                        if (details) {
+                            isDraft = !!details.draft;
+                            autoMerge = autoMergeInfo(details);
+                            requestedReviewers = (details.requested_reviewers || []).map(r => r.login);
+                            // No listing entry to place this PR in a stack, but its own base
+                            // branch is known, so keep the "onto <branch>" hint.
+                            detailsNode = {
+                                parent: null,
+                                stack: null,
+                                baseRef: details.base ? details.base.ref : "",
+                                headRef: details.head ? details.head.ref : "",
+                                defaultBranch: details.base && details.base.repo ? details.base.repo.default_branch : null,
+                            };
+                        }
+                    }
+
+                    let reviewState = "PENDING";
+                    const reviews = await reviewsPromise;
+                    if (Array.isArray(reviews)) {
+                        const latestByUser = {};
+                        for (const r of reviews) {
+                            if (r.state === "COMMENTED") continue;
+                            latestByUser[r.user.login] = r.state;
+                        }
+                        const states = Object.values(latestByUser);
+                        if (states.includes("CHANGES_REQUESTED")) reviewState = "CHANGES_REQUESTED";
+                        else if (states.includes("APPROVED")) reviewState = "APPROVED";
+                    }
+                    progress.advance("reviews");
+
+                    const node = stackNode || detailsNode;
+                    const feature = node && node.feature
+                        ? node.feature
+                        : featureKey(pr.title, node ? node.headRef : "", pr.body || "");
+
+                    return { ...pr, repoFullName, reviewState, isDraft, autoMerge, requestedReviewers, stackNode: node, feature };
                 }));
 
                 // Every open PR seen while building the stacks, so a cross-repo set can also show
                 // the parts a colleague owns - as long as they are in a repo you have a PR in too.
-                allRepoNodes = repoNames.flatMap(repo => [...stackIndexes[repo].values()]);
+                const indexes = await Promise.all(repoNames.map(repo => stackIndexes.get(repo)));
+                allRepoNodes = indexes.flatMap(index => [...index.values()]);
 
-                // Fetch PR details and review status in batches to avoid secondary rate limits
-                const BATCH_SIZE = 5;
-                const enriched = [];
-                for (let i = 0; i < prs.length; i += BATCH_SIZE) {
-                    const batch = prs.slice(i, i + BATCH_SIZE);
-                    const results = await Promise.all(batch.map(async (pr) => {
-                        const repoFullName = pr.repository_url.replace("https://api.github.com/repos/", "");
-                        const stackNode = stackIndexes[repoFullName]
-                            ? stackIndexes[repoFullName].get(pr.number) || null
-                            : null;
-
-                        let reviewState = "PENDING";
-                        let isDraft = stackNode ? stackNode.draft : !!pr.draft;
-                        let autoMerge = stackNode ? stackNode.autoMerge : null;
-                        let requestedReviewers = stackNode ? stackNode.requestedReviewers : [];
-                        let detailsNode = null;
-                        try {
-                            const requests = [
-                                fetch(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}/reviews`, { headers }),
-                            ];
-                            if (!stackNode) {
-                                requests.push(fetch(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`, { headers }));
-                            }
-                            const [reviewsRes, prDetailsRes] = await Promise.all(requests);
-
-                            if (prDetailsRes && prDetailsRes.ok) {
-                                const details = await prDetailsRes.json();
-                                isDraft = !!details.draft;
-                                autoMerge = autoMergeInfo(details);
-                                requestedReviewers = (details.requested_reviewers || []).map(r => r.login);
-                                // No listing entry to place this PR in a stack, but its own base
-                                // branch is known, so keep the "onto <branch>" hint.
-                                detailsNode = {
-                                    parent: null,
-                                    stack: null,
-                                    baseRef: details.base ? details.base.ref : "",
-                                    headRef: details.head ? details.head.ref : "",
-                                    defaultBranch: details.base && details.base.repo ? details.base.repo.default_branch : null,
-                                };
-                            }
-
-                            if (reviewsRes.ok) {
-                                const reviews = await reviewsRes.json();
-                                const latestByUser = {};
-                                for (const r of reviews) {
-                                    if (r.state === "COMMENTED") continue;
-                                    latestByUser[r.user.login] = r.state;
-                                }
-                                const states = Object.values(latestByUser);
-                                if (states.includes("CHANGES_REQUESTED")) reviewState = "CHANGES_REQUESTED";
-                                else if (states.includes("APPROVED")) reviewState = "APPROVED";
-                            }
-                        } catch (err) {
-                            console.warn(`Failed to fetch details for ${repoFullName}#${pr.number}:`, err);
-                        }
-
-                        const node = stackNode || detailsNode;
-                        const feature = node && node.feature
-                            ? node.feature
-                            : featureKey(pr.title, node ? node.headRef : "", pr.body || "");
-
-                        return { ...pr, repoFullName, reviewState, isDraft, autoMerge, requestedReviewers, stackNode: node, feature };
-                    }));
-                    enriched.push(...results);
-                    setRefreshProgress(`Loading reviews… ${Math.min(enriched.length, prs.length)}/${prs.length}`);
-                }
-
-                let outstanding = new Map();
-                try {
-                    outstanding = await fetchOutstandingWork(enriched, token);
-                } catch (err) {
-                    console.warn("Failed to read unresolved review state:", err);
-                }
+                const outstanding = await outstandingPromise;
                 for (const pr of enriched) {
                     const entry = outstanding.get(`${pr.repoFullName}#${pr.number}`);
                     // Only a verdict that left no inline comment counts on its own.
@@ -1898,6 +1942,23 @@
         function setRefreshProgress(message) {
             if (!isFetching) return;
             document.getElementById("last-updated").textContent = message;
+        }
+
+        // The scan, review and comment phases overlap, so the status line shows every phase
+        // still running at once, e.g. "Loading… repositories 3/8 · reviews 12/40".
+        function createRefreshProgress(phases) {
+            const state = new Map(phases.map(([key, label, total]) => [key, { label, total, done: 0 }]));
+            const render = () => {
+                const open = [...state.values()].filter(p => p.done < p.total);
+                if (open.length) {
+                    setRefreshProgress(`Loading\u2026 ${open.map(p => `${p.label} ${p.done}/${p.total}`).join(" \u00b7 ")}`);
+                }
+            };
+            render();
+            return {
+                set(key, done) { state.get(key).done = done; render(); },
+                advance(key) { state.get(key).done++; render(); },
+            };
         }
 
         function updateLastUpdated() {

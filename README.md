@@ -26,8 +26,9 @@ straight from the browser with a token you provide.
 - Collapsible feature, repository and stack sections, remembered across reloads
 - Configurable auto-refresh: 1m, 5m, 30m, 1h, or on tab focus
 - Every refresh, manual or automatic, shows a progress strip across the top of the window,
-  a spinner in the Refresh button, and the phase it is in (`Scanning repositories... 3/8`)
-  where `Updated ... ago` sits; the previous list stays on screen, faded, until it lands
+  a spinner in the Refresh button, and how far each phase has got
+  (`Loading... repositories 3/8 · reviews 12/40 · comments 20/40`) where `Updated ... ago`
+  sits; the previous list stays on screen, faded, until it lands
 - Light and dark theme, following the system setting
 
 ## Cross-repo grouping
@@ -132,7 +133,10 @@ heading.
 ## Notes
 
 Each refresh costs a search call plus one open-PR listing per repository you have a PR in,
-one review call per PR, and one GraphQL query per 10 PRs for the unresolved counts. At most 500 open PRs per repository are scanned for stack
+one review call per PR, and one GraphQL query per 10 PRs for the unresolved counts. Once the
+search returns, the repository listings, review calls and GraphQL queries all run at once,
+each through its own small pool (6, 8 and 3 requests in flight), so a refresh takes about as
+long as its slowest phase rather than the sum of them. At most 500 open PRs per repository are scanned for stack
 links, taking the most recently updated ones first. At most 500 review threads are counted
 per PR, and Copilot's verdict is looked for in that PR's 20 most recent reviews. Cross-repo grouping adds no requests:
 titles, branch names and bodies all come from responses already being fetched.
