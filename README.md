@@ -21,6 +21,9 @@ straight from the browser with a token you provide.
   is work left in it (see [Unresolved comments](#unresolved-comments))
 - Auto-merge badge, naming the merge method, on any PR GitHub will land by itself once its
   checks and reviews pass; once the PR enters a merge queue it shows `Merge queue #N` instead
+- Conflicts badge on any PR GitHub cannot merge until its conflicts with the base branch are
+  resolved; GitHub works mergeability out in the background after a push, so a fresh conflict
+  can take one more refresh to appear
 - Draft state, with filters for all / ready / draft
 - Age filter: recently updated (last two weeks) or all time
 - Collapsible feature, repository and stack sections, remembered across reloads
