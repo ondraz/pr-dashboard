@@ -12,7 +12,7 @@ straight from the browser with a token you provide.
 
 - Your open PRs across all repositories, grouped by repository
 - Stacked PRs render as a single connected chain with the base at the bottom, each one
-  showing the PR it is based on
+  showing the PR it is based on, including a colleague's PR your stack sits on
 - Cross-repo changes group into one block, so a feature implemented across several
   repositories reads as one unit (see [Cross-repo grouping](#cross-repo-grouping))
 - Review status: approved, changes requested, or pending with the requested reviewers
@@ -53,9 +53,9 @@ title from being read as ticket ids, and default branch names (`master`, `main`,
 never used as a key, so two unrelated PRs opened from a fork's default branch stay apart.
 
 A key only forms a group when **your own PRs carry it in two or more repositories** - a key
-confined to one repo is just a branch. Once a group exists, open PRs by other people that
-share the key join it as muted context, as long as they are in a repository you also have a
-PR in. Stacks keep working inside a group: a chain in one repo renders as a chain.
+confined to one repo is just a branch. Once a group exists, a PR by someone else that one of
+your PRs is stacked on joins it as muted context when it shares the key. Stacks keep working
+inside a group: a chain in one repo renders as a chain.
 
 **By repo** is the default view and is unchanged, except that a PR belonging to a
 cross-repo set gets a badge naming the key and the number of repositories; clicking it
@@ -132,12 +132,12 @@ heading.
 
 ## Notes
 
-Each refresh costs a search call plus one open-PR listing per repository you have a PR in,
-one review call per PR, and one GraphQL query per 10 PRs for the unresolved counts. Once the
-search returns, the repository listings, review calls and GraphQL queries all run at once,
-each through its own small pool (6, 8 and 3 requests in flight), so a refresh takes about as
-long as its slowest phase rather than the sum of them. At most 500 open PRs per repository are scanned for stack
-links, taking the most recently updated ones first. At most 500 review threads are counted
+Each refresh costs a search call plus one details call and one review call per PR, one
+lookup per colleague PR a stack of yours sits on, and one GraphQL query per 10 PRs for the
+unresolved counts. Only your own PRs are fetched, never a repository's whole open-PR list,
+so a busy repository costs no more than a quiet one. Once the search returns, the REST calls
+and the GraphQL queries run at once, each through its own small pool (12 and 3 requests in
+flight). A stack is followed down through at most 5 colleague PRs. At most 500 review threads are counted
 per PR, and Copilot's verdict is looked for in that PR's 20 most recent reviews. Cross-repo grouping adds no requests:
 titles, branch names and bodies all come from responses already being fetched.
 

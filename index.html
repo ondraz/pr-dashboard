@@ -792,14 +792,13 @@
     </div>
 
     <script>
-        const REPO_PR_PAGE_CAP = 5; // at most 500 open PRs per repo are scanned for stack links
+        const STACK_PARENT_HOP_CAP = 5; // at most 5 colleague PRs are followed below one of yours
         const REVIEW_BATCH_SIZE = 10; // PRs per GraphQL review query
         const THREAD_PAGE_CAP = 5; // at most 500 review threads are counted per PR
         const REVIEW_HISTORY_CAP = 20; // reviews read per PR, newest last, to find Copilot's latest
-        // Requests in flight per pool. The three pools run at once, so a refresh never has more
+        // Requests in flight per pool. The two pools run at once, so a refresh never has more
         // than their sum open - far under GitHub's secondary limit of 100 concurrent requests.
-        const REPO_SCAN_CONCURRENCY = 6;
-        const PR_REQUEST_CONCURRENCY = 8;
+        const PR_REQUEST_CONCURRENCY = 12;
         const GRAPHQL_CONCURRENCY = 3;
 
         let allPRs = [];
@@ -1033,30 +1032,39 @@
             });
         }
 
-        // Every open PR in the repo, so a stack is visible even when part of it belongs to
-        // someone else. Degrades to whatever was fetched if the listing fails. Sorted by last
-        // update rather than the default creation order: when a repo has more open PRs than the
-        // page cap covers, the members of a live stack are the ones worth keeping in the window.
-        async function fetchRepoOpenPRs(repoFullName, headers) {
-            const out = [];
-            for (let page = 1; page <= REPO_PR_PAGE_CAP; page++) {
-                let data;
-                try {
-                    const res = await fetch(
-                        `https://api.github.com/repos/${repoFullName}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=${page}`,
-                        { headers }
-                    );
-                    if (!res.ok) break;
-                    data = await res.json();
-                } catch (err) {
-                    console.warn(`Failed to list open PRs for ${repoFullName}:`, err);
-                    break;
+        // The open PRs your own ones are stacked on but that are not yours: from every base that is
+        // neither the default branch nor the head of a PR already known, look up the open PR whose
+        // head it is, and repeat from there. Listing the whole repo instead would cost pages of
+        // full PR objects in a busy repo. PRs stacked on top of yours by someone else stay unseen.
+        async function fetchStackParents(repoFullName, ownPRs, getJSON) {
+            const knownHeads = new Set(ownPRs.map(pr => refLabel(pr.head)));
+            const knownNumbers = new Set(ownPRs.map(pr => pr.number));
+            const parents = [];
+            let frontier = ownPRs;
+            for (let hop = 0; hop < STACK_PARENT_HOP_CAP && frontier.length; hop++) {
+                const wanted = new Set();
+                for (const pr of frontier) {
+                    const base = pr.base;
+                    if (!base || !base.ref) continue;
+                    if (base.repo && base.ref === base.repo.default_branch) continue;
+                    const label = refLabel(base);
+                    if (!knownHeads.has(label)) wanted.add(label);
                 }
-                if (!Array.isArray(data) || data.length === 0) break;
-                out.push(...data);
-                if (data.length < 100) break;
+                const found = await Promise.all([...wanted].map(label => getJSON(
+                    `https://api.github.com/repos/${repoFullName}/pulls?state=open&head=${encodeURIComponent(label)}&per_page=1`,
+                    `the PR with head ${label} in ${repoFullName}`,
+                )));
+                wanted.forEach(label => knownHeads.add(label));
+                frontier = found
+                    .flatMap(list => Array.isArray(list) ? list.slice(0, 1) : [])
+                    .filter(pr => !knownNumbers.has(pr.number));
+                for (const pr of frontier) {
+                    knownNumbers.add(pr.number);
+                    knownHeads.add(refLabel(pr.head));
+                    parents.push(pr);
+                }
             }
-            return out;
+            return parents;
         }
 
         const COPILOT_RE = /copilot/i;
@@ -1408,21 +1416,6 @@
                     return new Map();
                 });
 
-                // One listing per repo covers both the stack graph and the draft/reviewer state,
-                // which saves a per-PR details call for every PR it contains. Each repo resolves
-                // on its own, so its PRs move on without waiting for the slowest repo.
-                const limitRepoScan = createLimiter(REPO_SCAN_CONCURRENCY);
-                const stackIndexes = new Map(repoNames.map(repo => [repo, limitRepoScan(async () => {
-                    try {
-                        return buildStackIndex(await fetchRepoOpenPRs(repo, headers), repo);
-                    } catch (err) {
-                        console.warn(`Failed to build the stack index for ${repo}:`, err);
-                        return new Map();
-                    } finally {
-                        progress.advance("repos");
-                    }
-                })]));
-
                 const limitPRRequest = createLimiter(PR_REQUEST_CONCURRENCY);
                 const getJSON = (url, label) => limitPRRequest(async () => {
                     const res = await fetch(url, { headers });
@@ -1432,39 +1425,40 @@
                     return null;
                 });
 
+                // The search hit lacks branches, reviewers and auto-merge, so every PR needs its
+                // own details call; a failed one leaves that PR out of its stack.
+                const details = new Map(prs.map(pr => [`${repoOf(pr)}#${pr.number}`, getJSON(
+                    `https://api.github.com/repos/${repoOf(pr)}/pulls/${pr.number}`,
+                    `details for ${repoOf(pr)}#${pr.number}`,
+                )]));
+
+                // Each repo's stacks are your PRs there plus the colleague PRs they sit on. A repo
+                // resolves on its own, so its PRs move on without waiting for the slowest repo.
+                const stackIndexes = new Map(repoNames.map(repo => [repo, (async () => {
+                    try {
+                        const own = (await Promise.all(prs
+                            .filter(pr => repoOf(pr) === repo)
+                            .map(pr => details.get(`${repo}#${pr.number}`)))).filter(Boolean);
+                        const parents = await fetchStackParents(repo, own, getJSON);
+                        return buildStackIndex([...own, ...parents], repo);
+                    } catch (err) {
+                        console.warn(`Failed to build the stack index for ${repo}:`, err);
+                        return new Map();
+                    } finally {
+                        progress.advance("repos");
+                    }
+                })()]));
+
                 const enriched = await Promise.all(prs.map(async (pr) => {
                     const repoFullName = repoOf(pr);
-                    // Reviews do not depend on the listing, so they start before it lands.
                     const reviewsPromise = getJSON(
                         `https://api.github.com/repos/${repoFullName}/pulls/${pr.number}/reviews`,
                         `reviews for ${repoFullName}#${pr.number}`,
                     );
-                    const stackNode = (await stackIndexes.get(repoFullName)).get(pr.number) || null;
-
-                    let isDraft = stackNode ? stackNode.draft : !!pr.draft;
-                    let autoMerge = stackNode ? stackNode.autoMerge : null;
-                    let requestedReviewers = stackNode ? stackNode.requestedReviewers : [];
-                    let detailsNode = null;
-                    if (!stackNode) {
-                        const details = await getJSON(
-                            `https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`,
-                            `details for ${repoFullName}#${pr.number}`,
-                        );
-                        if (details) {
-                            isDraft = !!details.draft;
-                            autoMerge = autoMergeInfo(details);
-                            requestedReviewers = (details.requested_reviewers || []).map(r => r.login);
-                            // No listing entry to place this PR in a stack, but its own base
-                            // branch is known, so keep the "onto <branch>" hint.
-                            detailsNode = {
-                                parent: null,
-                                stack: null,
-                                baseRef: details.base ? details.base.ref : "",
-                                headRef: details.head ? details.head.ref : "",
-                                defaultBranch: details.base && details.base.repo ? details.base.repo.default_branch : null,
-                            };
-                        }
-                    }
+                    const node = (await stackIndexes.get(repoFullName)).get(pr.number) || null;
+                    const isDraft = node ? node.draft : !!pr.draft;
+                    const autoMerge = node ? node.autoMerge : null;
+                    const requestedReviewers = node ? node.requestedReviewers : [];
 
                     let reviewState = "PENDING";
                     const reviews = await reviewsPromise;
@@ -1480,7 +1474,6 @@
                     }
                     progress.advance("reviews");
 
-                    const node = stackNode || detailsNode;
                     const feature = node && node.feature
                         ? node.feature
                         : featureKey(pr.title, node ? node.headRef : "", pr.body || "");
