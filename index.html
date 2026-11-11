@@ -582,6 +582,26 @@
             font-weight: 400;
             letter-spacing: 0;
             text-transform: none;
+            flex-shrink: 0;
+        }
+
+        .stack-label { flex-shrink: 0; }
+
+        .stack-name {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+            letter-spacing: 0;
+            text-transform: none;
+            color: var(--color-text);
+        }
+
+        /* Borrowed from the bottom PR's title rather than declared, so it reads as a hint. */
+        .stack-name-derived {
+            font-weight: 400;
+            color: var(--color-text-secondary);
         }
 
         .stack-body .pr-item {
@@ -978,6 +998,7 @@
         // ("l-686-thinking-in-ui", "ondra/ai-624-full-scale"). Anchoring it keeps version numbers
         // and library names in the middle of a title from being read as ticket ids.
         const FEATURE_TRAILER_RE = /^[ \t]*part-of:[ \t]*(\S.*?)[ \t]*$/im;
+        const STACK_TRAILER_RE = /^[ \t]*stack:[ \t]*(\S.*?)[ \t]*$/im;
         const TICKET_IN_TITLE_RE = /^([A-Za-z]{1,10}-\d{1,6})\b/;
         const TICKET_IN_BRANCH_RE = /(?:^|\/)([A-Za-z]{1,10}-\d{1,6})(?:[-_/.]|$)/;
 
@@ -1014,6 +1035,20 @@
                 return { key: `branch:${headRef}`, label: headRef, kind: "branch" };
             }
             return null;
+        }
+
+        function stackTrailer(body) {
+            const match = body ? body.match(STACK_TRAILER_RE) : null;
+            return match ? match[1].trim() : null;
+        }
+
+        // GitHub has no name for a stack, so a "Stack: <name>" line in any member's body names
+        // it, the one nearest the base winning; without one the bottom PR's title stands in.
+        function stackName(orderedBottomUp) {
+            const declared = orderedBottomUp.find(node => node.stackTrailer);
+            if (declared) return { text: declared.stackTrailer, declared: true };
+            const bottom = orderedBottomUp[0];
+            return bottom && bottom.title ? { text: bottom.title, declared: false } : null;
         }
 
         // GitHub fills auto_merge only while auto-merge is armed and still waiting, so its
@@ -1277,6 +1312,7 @@
                 headRef: pr.head ? pr.head.ref : "",
                 repoFullName,
                 feature: featureKey(pr.title, pr.head ? pr.head.ref : "", pr.body || ""),
+                stackTrailer: stackTrailer(pr.body),
                 headLabel: refLabel(pr.head),
                 baseLabel: refLabel(pr.base),
                 parent: null,
@@ -1350,6 +1386,7 @@
                 }
                 stack.id = stack.ordered[0].number;
                 stack.rootBaseRef = roots.length === 1 ? roots[0].baseRef : null;
+                stack.name = stackName(stack.ordered);
 
                 for (const member of members) index.set(member.number, member);
             }
@@ -1731,6 +1768,14 @@
             </div>`;
         }
 
+        function stackNameHtml(name) {
+            if (!name) return "";
+            const title = name.declared
+                ? `Named by a "Stack:" line in a PR description`
+                : `Title of the bottom PR; add a "Stack: <name>" line to a PR description to name the stack`;
+            return `<span class="stack-name${name.declared ? "" : " stack-name-derived"}" title="${esc(title)}">${esc(name.text)}</span>`;
+        }
+
         function stackHtml(stack, prsByNumber) {
             // Keyed by the bottom PR of the chain, so the same stack keeps its state in both
             // the by-repo and the by-feature view.
@@ -1740,7 +1785,8 @@
                 <div class="stack-header collapse-header" ${collapseAttrs(collapsed)}>
                     ${chevronIcon()}
                     ${branchIcon()}
-                    <span>Stack of ${stack.size}</span>
+                    <span class="stack-label">Stack of ${stack.size}</span>
+                    ${stackNameHtml(stack.name)}
                     ${stack.rootBaseRef ? `<span class="stack-onto">onto ${esc(stack.rootBaseRef)}</span>` : ''}
                 </div>
                 <div class="stack-body">`;

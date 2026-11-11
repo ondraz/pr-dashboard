@@ -13,6 +13,9 @@ straight from the browser with a token you provide.
 - Your open PRs across all repositories, grouped by repository
 - Stacked PRs render as a single connected chain with the base at the bottom, each one
   showing the PR it is based on, including a colleague's PR your stack sits on
+- Named stacks: a `Stack: <name>` line on its own in any member's description names the
+  stack in its header, so a collapsed stack still says what it is. The member nearest the
+  base wins if several declare one; without any, the bottom PR's title stands in, greyed
 - Cross-repo changes group into one block, so a feature implemented across several
   repositories reads as one unit (see [Cross-repo grouping](#cross-repo-grouping))
 - Review status: approved, changes requested, or pending with the requested reviewers
