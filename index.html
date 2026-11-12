@@ -1128,6 +1128,9 @@
 
         const COPILOT_RE = /copilot/i;
         const COPILOT_APPROVAL_RE = /approval recommended|looks good|no (?:issues|comments)/i;
+        // Asks a human to verify something Copilot could not, not for a change to the code, so
+        // there is nothing to resolve.
+        const COPILOT_CLOSER_LOOK_RE = /needs a closer look/i;
         // The title Copilot's newer bodies put above the verdict, and the reviews that read
         // nothing at all - neither says anything is owed.
         const COPILOT_OVERVIEW_TITLE_RE = /^copilot review overview$/i;
@@ -1159,13 +1162,14 @@
                 id: review.id,
                 databaseId: review.databaseId,
                 label: label.slice(0, 60),
-                approving: review.state === "APPROVED" || COPILOT_APPROVAL_RE.test(label),
+                owing: review.state !== "APPROVED" && !COPILOT_APPROVAL_RE.test(label)
+                    && !COPILOT_CLOSER_LOOK_RE.test(label),
             };
         }
 
         // What a PR still owes: review threads nobody has resolved, plus Copilot's latest verdict
-        // when it is not an approval - a "needs a closer look" carries no inline comment, so it
-        // leaves no thread behind and would otherwise be invisible here. Neither resolution state
+        // when it asks for changes - such a verdict may carry no inline comment, so it leaves no
+        // thread behind and would otherwise be invisible here. Neither resolution state
         // nor the verdict exists in REST, so this is the one GraphQL call the dashboard makes;
         // merge-queue membership rides along for the same reason. PRs are batched into a single
         // query by alias; a failure leaves the counts unknown and the badge simply does not render.
@@ -1555,7 +1559,7 @@
                 for (const pr of enriched) {
                     const entry = outstanding.get(`${pr.repoFullName}#${pr.number}`);
                     // Only a verdict that left no inline comment counts on its own.
-                    const verdict = entry && entry.copilot && !entry.copilot.approving
+                    const verdict = entry && entry.copilot && entry.copilot.owing
                         && !entry.threadedReviews.has(entry.copilot.id) ? entry.copilot : null;
                     pr.unresolvedThreads = entry ? entry.threads : 0;
                     pr.unresolvedComments = entry ? entry.comments : 0;

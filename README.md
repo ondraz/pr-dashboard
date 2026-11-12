@@ -82,15 +82,16 @@ conversations, whoever wrote them - Copilot's inline comments are threads like a
 else's. The tooltip also gives how many comments sit inside those threads, so one thread
 with a long back-and-forth does not read as five separate things to do.
 
-**Copilot's standing verdict**, when it is not an approval. Copilot reviews every push and
+**Copilot's standing verdict**, when it asks for changes. Copilot reviews every push and
 names what it concluded in a heading - `Changes recommended`, `Needs a closer look`,
 `Approval recommended` - and only the newest one describes the code as it is now. A verdict
-that asked for something but generated no inline comment leaves no thread to resolve and
+that asked for changes but generated no inline comment leaves no thread to resolve and
 would otherwise be invisible, so it counts as one item and the badge links to the review
 itself. A verdict that did leave inline comments is left out: while they are open they
 already count, and once they are all resolved the verdict has been answered and the badge
-drops to zero. A review that read
-no files, or failed outright, is not a verdict and counts as nothing.
+drops to zero. `Needs a closer look` asks a human to verify what Copilot could not, not for
+a change, so it counts as nothing, like an approval. A review that read no files, or failed
+outright, is not a verdict and counts as nothing.
 
 Neither resolution state nor the verdict exists in the REST API, so this is the one part of
 the dashboard that goes through GraphQL. The token needs nothing extra: the same
