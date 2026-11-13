@@ -843,6 +843,10 @@
 
         let allPRs = [];
         let allRepoNodes = [];
+        // The PRs that pass the current filters, by "repo#number". A stack is drawn once, under
+        // whichever group reaches it first, so its members are looked up here rather than in
+        // that group's own PRs - otherwise your other members would render as muted context.
+        let listedPRs = new Map();
         let currentFilter = "all";
         let refreshTimer = null;
         let currentIntervalMs = 0; // 0 = "on access"
@@ -1780,7 +1784,7 @@
             return `<span class="stack-name${name.declared ? "" : " stack-name-derived"}" title="${esc(title)}">${esc(name.text)}</span>`;
         }
 
-        function stackHtml(stack, prsByNumber) {
+        function stackHtml(stack, drawn) {
             // Keyed by the bottom PR of the chain, so the same stack keeps its state in both
             // the by-repo and the by-feature view.
             const key = `stack:${stack.ordered[0].repoFullName}#${stack.id}`;
@@ -1797,7 +1801,8 @@
 
             // Drawn tip first, so the PR on the base branch sits at the bottom, as in `git log`.
             for (const node of stack.ordered.slice().reverse()) {
-                const pr = prsByNumber.get(node.number);
+                const pr = listedPRs.get(`${node.repoFullName}#${node.number}`);
+                if (pr) drawn.push(pr);
                 html += pr ? prItemHtml(pr) : contextItemHtml(node);
             }
 
@@ -1806,25 +1811,29 @@
 
         // The PRs of one repo, newest first, with stacks collapsed into a single chain. A stack
         // takes the position of its most recently updated member; `renderedStacks` is shared
-        // across the whole page so a chain is never drawn twice.
+        // across the whole page so a chain is never drawn twice. `drawn` holds your PRs that got
+        // a row here, which can include stack members from outside `prs`.
         function repoBodyHtml(prs, renderedStacks) {
-            const prsByNumber = new Map(prs.map(pr => [pr.number, pr]));
             let html = "";
+            const drawn = [];
             for (const pr of prs) {
                 const stack = pr.stackNode ? pr.stackNode.stack : null;
                 if (!stack || stack.size < 2) {
                     html += prItemHtml(pr);
+                    drawn.push(pr);
                     continue;
                 }
                 // stackHtml draws every member, so skipping an already drawn stack cannot hide a PR.
                 if (renderedStacks.has(stack)) continue;
                 renderedStacks.add(stack);
-                html += stackHtml(stack, prsByNumber);
+                html += stackHtml(stack, drawn);
             }
-            return html;
+            return { html, drawn };
         }
 
         function repoGroupHtml(repo, prs, renderedStacks) {
+            const body = repoBodyHtml(prs, renderedStacks);
+            if (!body.html) return "";
             const repoShort = repo.split("/")[1];
             const key = `repo:${repo}`;
             const collapsed = isCollapsed(key);
@@ -1833,10 +1842,10 @@
                     ${chevronIcon()}
                     ${repoIcon()}
                     <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a></span>
-                    ${unresolvedTotalHtml(prs)}
-                    <span class="repo-pr-count">${prs.length}</span>
+                    ${unresolvedTotalHtml(body.drawn)}
+                    <span class="repo-pr-count">${body.drawn.length}</span>
                 </div>
-                <div class="group-body">${repoBodyHtml(prs, renderedStacks)}</div>
+                <div class="group-body">${body.html}</div>
             </div>`;
         }
 
@@ -1898,19 +1907,10 @@
         };
 
         function featureGroupHtml(group, renderedStacks) {
-            const prCount = group.prs.length + group.context.length;
-            const key = `feature:${group.key}`;
-            const collapsed = isCollapsed(key);
-            let html = `<div class="feature-group${collapsed ? " collapsed" : ""}" id="${esc(featureId(group.key))}" data-collapse-key="${esc(key)}">
-                <div class="feature-header collapse-header" ${collapseAttrs(collapsed)}>
-                    ${chevronIcon()}
-                    ${linkIcon()}
-                    <span class="feature-key">${esc(group.label)}</span>
-                    <span class="feature-kind">${esc(FEATURE_KIND_LABEL[group.kind] || "")}</span>
-                    ${unresolvedTotalHtml(group.prs)}
-                    <span class="feature-count">${group.repos.size} repos &middot; ${prCount} PRs</span>
-                </div>
-                <div class="group-body">`;
+            let sections = "";
+            let repoCount = 0;
+            let prCount = 0;
+            const groupDrawn = [];
 
             const contextByRepo = new Map();
             for (const node of group.context) {
@@ -1927,6 +1927,8 @@
             for (const [repo, prs] of repos) {
                 const repoShort = repo.split("/")[1];
 
+                const body = repoBodyHtml(prs, renderedStacks);
+
                 // A member already drawn inside a stack chain must not repeat below it.
                 const inStacks = new Set();
                 for (const pr of prs) {
@@ -1937,25 +1939,42 @@
                     .filter(node => !inStacks.has(node.number))
                     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
+                // Your PRs here may all sit in a stack another group already drew.
+                if (!body.html && context.length === 0) continue;
+                repoCount++;
+                prCount += body.drawn.length + context.length;
+                groupDrawn.push(...body.drawn);
+
                 // Distinct from the by-repo view's key: collapsing one part of a cross-repo
                 // change should not collapse that repo everywhere else.
                 const repoKey = `feature-repo:${group.key}::${repo}`;
                 const repoCollapsed = isCollapsed(repoKey);
-                html += `<div class="feature-repo-section${repoCollapsed ? " collapsed" : ""}" data-collapse-key="${esc(repoKey)}">
+                sections += `<div class="feature-repo-section${repoCollapsed ? " collapsed" : ""}" data-collapse-key="${esc(repoKey)}">
                     <div class="feature-repo collapse-header" ${collapseAttrs(repoCollapsed)}>
                         ${chevronIcon()}
                         ${repoIcon()}
                         <a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repoShort)}</a>
-                        ${unresolvedTotalHtml(prs)}
-                        <span class="feature-repo-count">${prs.length + context.length}</span>
+                        ${unresolvedTotalHtml(body.drawn)}
+                        <span class="feature-repo-count">${body.drawn.length + context.length}</span>
                     </div>
-                    <div class="group-body">`;
-                html += repoBodyHtml(prs, renderedStacks);
-                for (const node of context) html += contextItemHtml(node);
-                html += `</div></div>`;
+                    <div class="group-body">${body.html}`;
+                for (const node of context) sections += contextItemHtml(node);
+                sections += `</div></div>`;
             }
 
-            return `${html}</div></div>`;
+            if (!sections) return "";
+            const key = `feature:${group.key}`;
+            const collapsed = isCollapsed(key);
+            return `<div class="feature-group${collapsed ? " collapsed" : ""}" id="${esc(featureId(group.key))}" data-collapse-key="${esc(key)}">
+                <div class="feature-header collapse-header" ${collapseAttrs(collapsed)}>
+                    ${chevronIcon()}
+                    ${linkIcon()}
+                    <span class="feature-key">${esc(group.label)}</span>
+                    <span class="feature-kind">${esc(FEATURE_KIND_LABEL[group.kind] || "")}</span>
+                    ${unresolvedTotalHtml(groupDrawn)}
+                    <span class="feature-count">${repoCount} repos &middot; ${prCount} PRs</span>
+                </div>
+                <div class="group-body">${sections}</div></div>`;
         }
 
         function renderPRs() {
@@ -1971,6 +1990,7 @@
                 return;
             }
 
+            listedPRs = new Map(filtered.map(pr => [`${pr.repoFullName}#${pr.number}`, pr]));
             const featureGroups = buildFeatureGroups(filtered);
             featureSpan = new Map(featureGroups.map(group => [group.key, group.repos.size]));
 
@@ -1982,10 +2002,10 @@
 
                 const grouped = new Set(featureGroups.flatMap(group => group.prs));
                 const rest = filtered.filter(pr => !grouped.has(pr));
-                if (featureGroups.length > 0 && rest.length > 0) {
-                    html += `<div class="section-label">Single-repo work</div>`;
-                }
-                for (const [repo, prs] of byRepo(rest)) html += repoGroupHtml(repo, prs, renderedStacks);
+                let restHtml = "";
+                for (const [repo, prs] of byRepo(rest)) restHtml += repoGroupHtml(repo, prs, renderedStacks);
+                if (html && restHtml) html += `<div class="section-label">Single-repo work</div>`;
+                html += restHtml;
             } else {
                 for (const [repo, prs] of byRepo(filtered)) html += repoGroupHtml(repo, prs, renderedStacks);
             }
