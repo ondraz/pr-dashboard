@@ -824,6 +824,9 @@
             <span style="color:var(--color-border);margin:0 4px">|</span>
             <button class="filter-btn active" data-group="repo" onclick="setGrouping('repo', this)">By repo</button>
             <button class="filter-btn" data-group="feature" onclick="setGrouping('feature', this)">By feature</button>
+            <span style="color:var(--color-border);margin:0 4px">|</span>
+            <label class="remember-label"><input type="checkbox" id="reviews-check" onchange="setShowSection('reviews', this.checked)"> Waiting for my review</label>
+            <label class="remember-label"><input type="checkbox" id="reviewed-check" onchange="setShowSection('reviewed', this.checked)"> Reviewed by me</label>
         </div>
 
         <div id="content">
@@ -842,6 +845,12 @@
         const GRAPHQL_CONCURRENCY = 3;
 
         let allPRs = [];
+        let reviewPRs = [];
+        let reviewedPRs = [];
+        const sectionShown = {
+            reviews: localStorage.getItem("show_reviews") !== "0",
+            reviewed: localStorage.getItem("show_reviewed") !== "0",
+        };
         let allRepoNodes = [];
         // The PRs that pass the current filters, by "repo#number". A stack is drawn once, under
         // whichever group reaches it first, so its members are looked up here rather than in
@@ -877,6 +886,8 @@
             sessionStorage.removeItem("gh_token");
             localStorage.removeItem("gh_token");
             allPRs = [];
+            reviewPRs = [];
+            reviewedPRs = [];
             allRepoNodes = [];
             lastFetchTime = null;
             document.getElementById("total-count").textContent = "-";
@@ -1450,24 +1461,36 @@
                     }
                 }
 
-                let prs = [];
-                let page = 1;
-                while (true) {
-                    setRefreshProgress(`Searching pull requests…${prs.length ? ` ${prs.length}` : ""}`);
-                    const searchRes = await fetch(
-                        `https://api.github.com/search/issues?q=is:pr+is:open+author:${login}&per_page=100&page=${page}&sort=updated&order=desc`,
-                        { headers }
-                    );
-                    if (!searchRes.ok) throw new Error("Failed to fetch PRs");
-                    const data = await searchRes.json();
-                    const items = Array.isArray(data.items) ? data.items : [];
-                    if (items.length === 0) break;
-                    prs = prs.concat(items);
-                    if (prs.length >= data.total_count) break;
-                    page++;
-                }
+                const searchPRs = async (qualifiers) => {
+                    let found = [];
+                    let page = 1;
+                    while (true) {
+                        setRefreshProgress(`Searching pull requests…${found.length ? ` ${found.length}` : ""}`);
+                        const searchRes = await fetch(
+                            `https://api.github.com/search/issues?q=is:pr+is:open+${qualifiers}&per_page=100&page=${page}&sort=updated&order=desc`,
+                            { headers }
+                        );
+                        if (!searchRes.ok) throw new Error("Failed to fetch PRs");
+                        const data = await searchRes.json();
+                        const items = Array.isArray(data.items) ? data.items : [];
+                        if (items.length === 0) break;
+                        found = found.concat(items);
+                        if (found.length >= data.total_count) break;
+                        page++;
+                    }
+                    return found;
+                };
 
                 const repoOf = (pr) => pr.repository_url.replace("https://api.github.com/repos/", "");
+
+                const prs = await searchPRs(`author:${login}`);
+                // The search hit alone is enough here: these rows show who asked and when, not
+                // stacks or review state, so they cost no per-PR calls.
+                const requested = sectionShown.reviews ? await searchPRs(`review-requested:${login}`) : [];
+                // A PR waiting for your review again is already listed above, so it is left out here.
+                const reviewed = sectionShown.reviewed
+                    ? await searchPRs(`reviewed-by:${login}+-author:${login}+-review-requested:${login}`)
+                    : [];
                 const repoNames = [...new Set(prs.map(repoOf))];
 
                 const progress = createRefreshProgress([
@@ -1496,6 +1519,25 @@
                     console.warn(`Failed to fetch ${label}:`, err);
                     return null;
                 });
+
+                const reviewedPromise = Promise.all(reviewed.map(async (pr) => {
+                    const repoFullName = repoOf(pr);
+                    const [detail, reviews] = await Promise.all([
+                        getJSON(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`, `details for ${repoFullName}#${pr.number}`),
+                        getJSON(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}/reviews?per_page=100`, `reviews for ${repoFullName}#${pr.number}`),
+                    ]);
+                    const mine = Array.isArray(reviews) ? reviews.filter(r => r.user && r.user.login === login) : [];
+                    const verdict = mine.filter(r => r.state === "APPROVED" || r.state === "CHANGES_REQUESTED").pop();
+                    const last = mine[mine.length - 1];
+                    const headSha = detail && detail.head ? detail.head.sha : null;
+                    return {
+                        ...pr,
+                        repoFullName,
+                        isDraft: detail ? !!detail.draft : !!pr.draft,
+                        myVerdict: verdict ? verdict.state : "COMMENTED",
+                        updatedSinceReview: !!(last && headSha && last.commit_id !== headSha),
+                    };
+                }));
 
                 // The search hit lacks branches, reviewers and auto-merge, so every PR needs its
                 // own details call; a failed one leaves that PR out of its stack.
@@ -1573,6 +1615,8 @@
                 }
 
                 allPRs = enriched;
+                reviewPRs = requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }));
+                reviewedPRs = await reviewedPromise;
                 lastFetchTime = new Date();
                 document.getElementById("total-count").textContent = allPRs.length;
                 renderPRs();
@@ -1600,6 +1644,19 @@
             document.querySelectorAll(".filter-btn[data-filter]").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
             renderPRs();
+        }
+
+        // Turning the list on fetches it at once; while it is off it is not searched at all.
+        function setShowSection(name, show) {
+            sectionShown[name] = show;
+            localStorage.setItem(`show_${name}`, show ? "1" : "0");
+            if (show) {
+                fetchPRs();
+            } else {
+                if (name === "reviews") reviewPRs = [];
+                if (name === "reviewed") reviewedPRs = [];
+                renderPRs();
+            }
         }
 
         function setAgeFilter(age, btn) {
@@ -1977,16 +2034,111 @@
                 <div class="group-body">${sections}</div></div>`;
         }
 
+        function reviewItemHtml(pr) {
+            const author = pr.user ? pr.user.login : "";
+            return `<div class="pr-item">
+                <span class="pr-status ${pr.isDraft ? "draft" : "open"}">${pr.isDraft ? prDraftIcon() : prOpenIcon()}</span>
+                <div class="pr-info">
+                    <div class="pr-title">
+                        <a href="${esc(pr.html_url)}" target="_blank" rel="noopener noreferrer">${esc(pr.title)}</a>
+                        ${pr.isDraft ? '<span class="draft-badge">Draft</span>' : ''}
+                    </div>
+                    <div class="pr-meta">
+                        #${parseInt(pr.number)}${author ? ` by ${esc(author)}` : ''} opened ${timeAgo(pr.created_at)}
+                    </div>
+                </div>
+                <a class="review-status review-pending" href="${esc(pr.html_url)}/files" target="_blank" rel="noopener noreferrer">Review</a>
+                <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
+            </div>`;
+        }
+
+        function reviewSectionHtml(prs) {
+            if (prs.length === 0) return "";
+            let html = `<div class="section-label">Waiting for your review</div>`;
+            for (const [repo, list] of byRepo(prs)) {
+                const key = `review-repo:${repo}`;
+                const collapsed = isCollapsed(key);
+                html += `<div class="repo-group${collapsed ? " collapsed" : ""}" data-collapse-key="${esc(key)}">
+                    <div class="repo-header collapse-header" ${collapseAttrs(collapsed)}>
+                        ${chevronIcon()}
+                        ${repoIcon()}
+                        <span class="repo-name"><a href="https://github.com/${esc(repo)}" target="_blank" rel="noopener noreferrer">${esc(repo.split("/")[1])}</a></span>
+                        <span class="repo-pr-count">${list.length}</span>
+                    </div>
+                    <div class="group-body">${list.map(reviewItemHtml).join("")}</div>
+                </div>`;
+            }
+            return html;
+        }
+
+        const REVIEWED_STATUSES = [
+            { key: "changes-updated", label: "Updated after you requested changes", badge: "review-changes", text: "Re-review" },
+            { key: "updated", label: "Updated since your review", badge: "review-pending", text: "Re-review" },
+            { key: "changes", label: "Waiting on the author", badge: "review-changes", text: "Changes requested" },
+            { key: "commented", label: "You commented", badge: "review-pending", text: "Commented" },
+            { key: "approved", label: "Approved, not merged", badge: "review-approved", text: "Approved" },
+        ];
+
+        function reviewedStatus(pr) {
+            if (pr.myVerdict === "APPROVED") return "approved";
+            if (pr.myVerdict === "CHANGES_REQUESTED") return pr.updatedSinceReview ? "changes-updated" : "changes";
+            return pr.updatedSinceReview ? "updated" : "commented";
+        }
+
+        function reviewedItemHtml(pr, status) {
+            const author = pr.user ? pr.user.login : "";
+            return `<div class="pr-item">
+                <span class="pr-status ${pr.isDraft ? "draft" : "open"}">${pr.isDraft ? prDraftIcon() : prOpenIcon()}</span>
+                <div class="pr-info">
+                    <div class="pr-title">
+                        <a href="${esc(pr.html_url)}" target="_blank" rel="noopener noreferrer">${esc(pr.title)}</a>
+                        ${pr.isDraft ? '<span class="draft-badge">Draft</span>' : ''}
+                    </div>
+                    <div class="pr-meta">
+                        ${esc(pr.repoFullName.split("/")[1])} #${parseInt(pr.number)}${author ? ` by ${esc(author)}` : ''}
+                    </div>
+                </div>
+                <a class="review-status ${status.badge}" href="${esc(pr.html_url)}/files" target="_blank" rel="noopener noreferrer">${status.text}</a>
+                <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
+            </div>`;
+        }
+
+        function reviewedSectionHtml(prs) {
+            if (prs.length === 0) return "";
+            let html = `<div class="section-label">Reviewed by me, not merged</div>`;
+            for (const status of REVIEWED_STATUSES) {
+                const list = prs.filter(pr => reviewedStatus(pr) === status.key)
+                    .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+                if (list.length === 0) continue;
+                const key = `reviewed:${status.key}`;
+                const collapsed = isCollapsed(key);
+                html += `<div class="repo-group${collapsed ? " collapsed" : ""}" data-collapse-key="${esc(key)}">
+                    <div class="repo-header collapse-header" ${collapseAttrs(collapsed)}>
+                        ${chevronIcon()}
+                        <span class="repo-name">${esc(status.label)}</span>
+                        <span class="repo-pr-count">${list.length}</span>
+                    </div>
+                    <div class="group-body">${list.map(pr => reviewedItemHtml(pr, status)).join("")}</div>
+                </div>`;
+            }
+            return html;
+        }
+
         function renderPRs() {
             const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+            const applyFilters = (prs) => {
+                let out = prs;
+                if (currentFilter === "open") out = out.filter(pr => !pr.isDraft);
+                if (currentFilter === "draft") out = out.filter(pr => pr.isDraft);
+                if (currentAgeFilter === "recent") out = out.filter(pr => new Date(pr.updated_at) >= twoWeeksAgo);
+                return out;
+            };
 
-            let filtered = allPRs;
-            if (currentFilter === "open") filtered = filtered.filter(pr => !pr.isDraft);
-            if (currentFilter === "draft") filtered = filtered.filter(pr => pr.isDraft);
-            if (currentAgeFilter === "recent") filtered = filtered.filter(pr => new Date(pr.updated_at) >= twoWeeksAgo);
+            const filtered = applyFilters(allPRs);
+            const reviewHtml = reviewSectionHtml(applyFilters(reviewPRs)) + reviewedSectionHtml(applyFilters(reviewedPRs));
 
             if (filtered.length === 0) {
-                document.getElementById("content").innerHTML = `<div class="empty">No pull requests found.</div>`;
+                document.getElementById("content").innerHTML = `<div class="empty">No pull requests found.</div>${reviewHtml}`;
                 return;
             }
 
@@ -2010,6 +2162,7 @@
                 for (const [repo, prs] of byRepo(filtered)) html += repoGroupHtml(repo, prs, renderedStacks);
             }
 
+            html += reviewHtml;
             document.getElementById("content").innerHTML = html;
         }
 
@@ -2118,6 +2271,9 @@
                     b.classList.toggle("active", b.dataset.age === savedAge);
                 });
             }
+
+            document.getElementById("reviews-check").checked = sectionShown.reviews;
+            document.getElementById("reviewed-check").checked = sectionShown.reviewed;
 
             const savedGrouping = localStorage.getItem("grouping");
             if (savedGrouping !== null) {
