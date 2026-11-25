@@ -860,6 +860,7 @@
         let refreshTimer = null;
         let currentIntervalMs = 0; // 0 = "on access"
         let isFetching = false;
+        let refetchQueued = false;
         let currentAgeFilter = "recent"; // "recent" or "all"
         let currentGrouping = "repo"; // "repo" or "feature"
 
@@ -1520,22 +1521,40 @@
                     return null;
                 });
 
+                // Null when any page fails, so a partial history never yields a verdict.
+                const getAllReviews = async (repoFullName, number) => {
+                    let all = [];
+                    for (let page = 1; ; page++) {
+                        const batch = await getJSON(
+                            `https://api.github.com/repos/${repoFullName}/pulls/${number}/reviews?per_page=100&page=${page}`,
+                            `reviews for ${repoFullName}#${number}`,
+                        );
+                        if (!Array.isArray(batch)) return null;
+                        all = all.concat(batch);
+                        if (batch.length < 100) return all;
+                    }
+                };
+
                 const reviewedPromise = Promise.all(reviewed.map(async (pr) => {
                     const repoFullName = repoOf(pr);
                     const [detail, reviews] = await Promise.all([
                         getJSON(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`, `details for ${repoFullName}#${pr.number}`),
-                        getJSON(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}/reviews?per_page=100`, `reviews for ${repoFullName}#${pr.number}`),
+                        getAllReviews(repoFullName, pr.number),
                     ]);
-                    const mine = Array.isArray(reviews) ? reviews.filter(r => r.user && r.user.login === login) : [];
-                    const verdict = mine.filter(r => r.state === "APPROVED" || r.state === "CHANGES_REQUESTED").pop();
-                    const last = mine[mine.length - 1];
                     const headSha = detail && detail.head ? detail.head.sha : null;
+                    if (!reviews || !headSha) {
+                        return { ...pr, repoFullName, isDraft: detail ? !!detail.draft : !!pr.draft, myVerdict: "UNKNOWN", updatedSinceReview: false };
+                    }
+                    const mine = reviews.filter(r => r.user && r.user.login === login);
+                    // A dismissal clears the standing verdict instead of reviving an older one.
+                    const verdict = mine.filter(r => r.state !== "COMMENTED" && r.state !== "PENDING").pop();
+                    const last = mine[mine.length - 1];
                     return {
                         ...pr,
                         repoFullName,
-                        isDraft: detail ? !!detail.draft : !!pr.draft,
-                        myVerdict: verdict ? verdict.state : "COMMENTED",
-                        updatedSinceReview: !!(last && headSha && last.commit_id !== headSha),
+                        isDraft: !!detail.draft,
+                        myVerdict: verdict && verdict.state !== "DISMISSED" ? verdict.state : "COMMENTED",
+                        updatedSinceReview: !!(last && last.commit_id !== headSha),
                     };
                 }));
 
@@ -1615,14 +1634,21 @@
                 }
 
                 allPRs = enriched;
-                reviewPRs = requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }));
-                reviewedPRs = await reviewedPromise;
+                const reviewedResult = await reviewedPromise;
+                reviewPRs = sectionShown.reviews
+                    ? requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }))
+                    : [];
+                reviewedPRs = sectionShown.reviewed ? reviewedResult : [];
                 lastFetchTime = new Date();
                 document.getElementById("total-count").textContent = allPRs.length;
                 renderPRs();
                 scheduleRefresh();
                 isFetching = false;
                 setRefreshUI(false);
+                if (refetchQueued) {
+                    refetchQueued = false;
+                    fetchPRs();
+                }
             } catch (err) {
                 isFetching = false;
                 setRefreshUI(false);
@@ -1651,7 +1677,8 @@
             sectionShown[name] = show;
             localStorage.setItem(`show_${name}`, show ? "1" : "0");
             if (show) {
-                fetchPRs();
+                if (isFetching) refetchQueued = true;
+                else fetchPRs();
             } else {
                 if (name === "reviews") reviewPRs = [];
                 if (name === "reviewed") reviewedPRs = [];
@@ -2077,9 +2104,11 @@
             { key: "changes", label: "Waiting on the author", badge: "review-changes", text: "Changes requested" },
             { key: "commented", label: "You commented", badge: "review-pending", text: "Commented" },
             { key: "approved", label: "Approved, not merged", badge: "review-approved", text: "Approved" },
+            { key: "unknown", label: "Review state not loaded", badge: "review-pending", text: "Unknown" },
         ];
 
         function reviewedStatus(pr) {
+            if (pr.myVerdict === "UNKNOWN") return "unknown";
             if (pr.myVerdict === "APPROVED") return "approved";
             if (pr.myVerdict === "CHANGES_REQUESTED") return pr.updatedSinceReview ? "changes-updated" : "changes";
             return pr.updatedSinceReview ? "updated" : "commented";
