@@ -33,7 +33,8 @@ straight from the browser with a token you provide.
 - Draft state, with filters for all / ready / draft
 - Age filter: recently updated (last two weeks) or all time
 - Collapsible feature, repository and stack sections, remembered across reloads
-- Configurable auto-refresh: 1m, 5m, 30m, 1h, or on tab focus
+- Live refresh (the default): a cheap check every 15 seconds, and a full refresh only when
+  something changed; or a fixed auto-refresh of 1m, 5m, 30m, 1h, or on tab focus
 - Every refresh, manual or automatic, shows a progress strip across the top of the window,
   a spinner in the Refresh button, and how far each phase has got
   (`Loading... repositories 3/8 · reviews 12/40 · comments 20/40`) where `Updated ... ago`
@@ -165,6 +166,12 @@ and the GraphQL queries run at once, each through its own small pool (12 and 3 r
 flight). A stack is followed down through at most 5 colleague PRs. At most 500 review threads are counted
 per PR, and Copilot's verdict is looked for in that PR's 20 most recent reviews. Cross-repo grouping adds no requests:
 titles, branch names and bodies all come from responses already being fetched.
+
+In live mode the change check is one GraphQL query (1 point of the 5,000-an-hour budget) every
+15 seconds while the tab is visible, about 240 points an hour. It compares which PRs each tab
+holds and each one's last update, head commit, mergeability, review decision, draft state and
+merge-queue position; a new or closed PR can take a minute to show, since GitHub's search index
+lags behind. A check run finishing does not count as a change, as the dashboard shows no CI.
 
 ## License
 

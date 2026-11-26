@@ -854,11 +854,12 @@
             <span class="last-updated" id="last-updated"></span>
             <span class="sr-only" id="refresh-announce" role="status" aria-live="polite"></span>
             <div class="interval-bar">
+                <button class="interval-btn active" data-interval="live" onclick="setInterval_('live', this)" title="Checks GitHub every 15 seconds and refreshes as soon as something changed">live</button>
                 <button class="interval-btn" data-interval="60000" onclick="setInterval_('60000', this)">1m</button>
                 <button class="interval-btn" data-interval="300000" onclick="setInterval_('300000', this)">5m</button>
                 <button class="interval-btn" data-interval="1800000" onclick="setInterval_('1800000', this)">30m</button>
                 <button class="interval-btn" data-interval="3600000" onclick="setInterval_('3600000', this)">1h</button>
-                <button class="interval-btn active" data-interval="0" onclick="setInterval_('0', this)">on access</button>
+                <button class="interval-btn" data-interval="0" onclick="setInterval_('0', this)">on access</button>
             </div>
             <span class="pr-count" id="total-count">-</span>
             <button class="refresh-btn" id="refresh-btn" onclick="fetchPRs()"><span class="btn-spinner"></span><span>Refresh</span></button>
@@ -927,6 +928,15 @@
         let currentFilter = "all";
         let refreshTimer = null;
         let currentIntervalMs = 0; // 0 = "on access"
+        // Live mode: GitHub has no push API a page can subscribe to, so a one-point GraphQL probe
+        // runs every LIVE_PROBE_MS and the full refresh only runs when the probe sees a change.
+        const LIVE_PROBE_MS = 15000;
+        let liveMode = true;
+        let liveTimer = null;
+        let liveFingerprint = null;
+        let probeInFlight = false;
+        let currentLogin = null;
+        const knownMergeable = new Map();
         let isFetching = false;
         let refetchQueued = false;
         let currentAgeFilter = "recent"; // "recent" or "all"
@@ -1546,6 +1556,11 @@
                     }
                 }
 
+                currentLogin = login;
+                const baselinePromise = liveMode
+                    ? readFingerprint(token, login).catch(err => { console.warn("Live change check failed:", err); return null; })
+                    : Promise.resolve(null);
+
                 const searchPRs = async (qualifiers) => {
                     let found = [];
                     let page = 1;
@@ -1726,6 +1741,7 @@
                 reviewPRs = requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }));
                 reviewedPRs = reviewedResult;
                 lastFetchTime = new Date();
+                liveFingerprint = await baselinePromise;
                 document.getElementById("total-count").textContent = allPRs.length;
                 renderPRs();
                 scheduleRefresh();
@@ -1741,6 +1757,10 @@
                 if (typeof refreshTimer !== "undefined" && refreshTimer) {
                     clearInterval(refreshTimer);
                     refreshTimer = null;
+                }
+                if (liveTimer) {
+                    clearInterval(liveTimer);
+                    liveTimer = null;
                 }
                 document.getElementById("content").innerHTML = `
                     <div class="error">${esc(err.message)}</div>`;
@@ -2377,8 +2397,63 @@
         // Keep "updated X ago" text fresh every 30s
         setInterval(updateLastUpdated, 30000);
 
+        const PROBE_QUERY = `query($mine: String!, $requested: String!, $reviewed: String!) {
+            mine: search(type: ISSUE, query: $mine, first: 100) { ...probe }
+            requested: search(type: ISSUE, query: $requested, first: 100) { ...probe }
+            reviewed: search(type: ISSUE, query: $reviewed, first: 100) { ...probe }
+        }
+        fragment probe on SearchResultItemConnection {
+            issueCount
+            nodes { ... on PullRequest { id updatedAt headRefOid mergeable reviewDecision isDraft mergeQueueEntry { position } } }
+        }`;
+
+        // Everything a refresh would show differently: which PRs each tab holds, and per PR its
+        // last update (comments, reviews, pushes), head, mergeability, review decision, draft
+        // state and merge-queue position. Search only picks the PRs; their fields are live.
+        async function readFingerprint(token, login) {
+            const res = await fetch("https://api.github.com/graphql", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ query: PROBE_QUERY, variables: {
+                    mine: `is:pr is:open author:${login}`,
+                    requested: `is:pr is:open review-requested:${login}`,
+                    reviewed: `is:pr is:open reviewed-by:${login} -author:${login} -review-requested:${login}`,
+                } }),
+            });
+            if (!res.ok) throw new Error(`Change check failed (${res.status})`);
+            const body = await res.json();
+            if (!body.data) throw new Error((body.errors || []).map(e => e.message).join("; ") || "Change check failed");
+            return JSON.stringify(["mine", "requested", "reviewed"].map(tab => {
+                const conn = body.data[tab] || { issueCount: 0, nodes: [] };
+                const prs = (conn.nodes || []).filter(n => n && n.id).map(n => {
+                    // GitHub works mergeability out lazily, so UNKNOWN keeps the last real answer.
+                    if (n.mergeable !== "UNKNOWN") knownMergeable.set(n.id, n.mergeable);
+                    return [n.id, n.updatedAt, n.headRefOid, knownMergeable.get(n.id) || "UNKNOWN",
+                        n.reviewDecision, n.isDraft, n.mergeQueueEntry ? n.mergeQueueEntry.position : null];
+                }).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+                return [conn.issueCount, prs];
+            }));
+        }
+
+        async function probeForChanges() {
+            const token = getToken();
+            if (!liveMode || !token || !currentLogin || isFetching || probeInFlight || document.hidden) return;
+            probeInFlight = true;
+            try {
+                const fingerprint = await readFingerprint(token, currentLogin);
+                if (liveFingerprint === null) liveFingerprint = fingerprint;
+                else if (fingerprint !== liveFingerprint && !isFetching) fetchPRs();
+            } catch (err) {
+                console.warn("Live change check failed:", err);
+            } finally {
+                probeInFlight = false;
+            }
+        }
+
         function setInterval_(ms, btn) {
-            currentIntervalMs = parseInt(ms);
+            liveMode = ms === "live";
+            liveFingerprint = null;
+            currentIntervalMs = liveMode ? 0 : parseInt(ms);
             localStorage.setItem("refresh_interval", ms);
             document.querySelectorAll(".interval-btn").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
@@ -2393,19 +2468,25 @@
             if (currentIntervalMs > 0) {
                 refreshTimer = setInterval(() => fetchPRs(), currentIntervalMs);
             }
+            if (liveTimer) {
+                clearInterval(liveTimer);
+                liveTimer = null;
+            }
+            if (liveMode) liveTimer = setInterval(probeForChanges, LIVE_PROBE_MS);
         }
 
-        // "On access" — refresh when tab becomes visible again
+        // Back on the tab: live mode checks for changes at once, "on access" refreshes outright.
         document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === "visible" && currentIntervalMs === 0 && getToken()) {
-                fetchPRs();
-            }
+            if (document.visibilityState !== "visible" || !getToken()) return;
+            if (liveMode) probeForChanges();
+            else if (currentIntervalMs === 0) fetchPRs();
         });
 
         function restoreSettings() {
             const savedInterval = localStorage.getItem("refresh_interval");
             if (savedInterval !== null) {
-                currentIntervalMs = parseInt(savedInterval);
+                liveMode = savedInterval === "live";
+                currentIntervalMs = liveMode ? 0 : parseInt(savedInterval);
                 document.querySelectorAll(".interval-btn").forEach(b => {
                     b.classList.toggle("active", b.dataset.interval === savedInterval);
                 });
