@@ -918,9 +918,10 @@
         const TABS = ["mine", "reviews", "reviewed"];
         let currentTab = "mine";
         let allRepoNodes = [];
-        // PR URL -> the Claude desktop session that made it, from `make serve`'s /sessions.json.
-        // Empty when the page is served any other way, which just leaves the button out.
-        let prSessions = new Map();
+        // PR URL -> the Claude session that made it, and the one that reviewed it, from
+        // `make serve`'s /sessions.json. Empty when the page is served any other way, which just
+        // leaves the button out.
+        let prSessions = { made: new Map(), reviewed: new Map() };
         // The PRs that pass the current filters, by "repo#number". A stack is drawn once, under
         // whichever group reaches it first, so its members are looked up here rather than in
         // that group's own PRs - otherwise your other members would render as muted context.
@@ -1499,13 +1500,18 @@
         let lastFetchTime = null;
 
         async function fetchPRSessions() {
-            if (location.protocol === "file:") return new Map();
+            const none = { made: new Map(), reviewed: new Map() };
+            if (location.protocol === "file:") return none;
             try {
                 const res = await fetch("sessions.json", { cache: "no-store" });
-                if (!res.ok) return new Map();
-                return new Map(Object.entries(await res.json()));
+                if (!res.ok) return none;
+                const body = await res.json();
+                return {
+                    made: new Map(Object.entries(body.made || {})),
+                    reviewed: new Map(Object.entries(body.reviewed || {})),
+                };
             } catch (err) {
-                return new Map();
+                return none;
             }
         }
 
@@ -1872,14 +1878,24 @@
             return `<span class="unresolved-badge" title="${total} unresolved review ${total === 1 ? "thread" : "threads"} in this group">${commentIcon()}${total}</span>`;
         }
 
-        function sessionBadgeHtml(pr) {
-            const session = prSessions.get(pr.html_url);
-            if (!session || !/^local_[0-9a-f-]+$/i.test(session.id)) return "";
+        // `role` picks the map: "made" on your own PRs, "reviewed" on the review tabs.
+        function sessionBadgeHtml(pr, role = "made") {
+            const session = prSessions[role].get(pr.html_url);
+            if (!session) return "";
+            let href;
+            if (/^local_[0-9a-f-]+$/i.test(session.id)) {
+                href = `claude://claude.ai/epitaxy/${session.id}`;
+            } else if (session.kind === "cli" && /^[0-9a-f-]{36}$/i.test(session.id)) {
+                href = `vscode://anthropic.claude-code/open?session=${session.id}`;
+            } else {
+                return "";
+            }
             const state = session.archived ? " (archived)" : "";
-            const title = `Open the Claude session that made this PR${state}${session.title ? `: ${session.title}` : ""}`;
-            return `<a class="session-badge${session.archived ? " archived" : ""}" href="claude://claude.ai/epitaxy/${esc(session.id)}"
+            const where = session.kind === "cli" ? " in VS Code" : "";
+            const title = `Open the Claude session that ${role} this PR${where}${state}${session.title ? `: ${session.title}` : ""}`;
+            return `<a class="session-badge${session.archived ? " archived" : ""}" href="${esc(href)}"
                 title="${esc(title)}" aria-label="${esc(title)}"
-            >${sparkIcon()}Claude</a>`;
+            >${sparkIcon()}${session.kind === "cli" ? "VS Code" : "Claude"}</a>`;
         }
 
         function featureBadgeHtml(pr) {
@@ -2208,6 +2224,7 @@
                         #${parseInt(pr.number)}${author ? ` by ${esc(author)}` : ''} opened ${timeAgo(pr.created_at)}
                     </div>
                 </div>
+                ${sessionBadgeHtml(pr, "reviewed")}
                 <a class="review-status review-pending" href="${esc(pr.html_url)}/files" target="_blank" rel="noopener noreferrer">Review</a>
                 <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
             </div>`;
@@ -2261,6 +2278,7 @@
                         ${esc(pr.repoFullName.split("/")[1])} #${parseInt(pr.number)}${author ? ` by ${esc(author)}` : ''}
                     </div>
                 </div>
+                ${sessionBadgeHtml(pr, "reviewed")}
                 <a class="review-status ${status.badge}" href="${esc(pr.html_url)}/files" target="_blank" rel="noopener noreferrer">${status.text}</a>
                 <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
             </div>`;

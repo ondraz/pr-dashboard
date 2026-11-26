@@ -133,12 +133,23 @@ so any other local page could read the token there - use the localhost server in
 
 ## Claude sessions
 
-The Claude desktop app records, per Code session, the PRs that session created or pushed.
 `make serve` runs [serve.py](serve.py), which serves the page and also answers
-`/sessions.json`: each PR URL mapped to the most recently active session that made it, read
-from `~/Library/Application Support/Claude/claude-code-sessions`. A PR the session only
-mentioned does not count. The button links to `claude://claude.ai/epitaxy/<session>`, which
-the desktop app opens; an archived session shows faded.
+`/sessions.json`: each PR URL mapped to the most recently active Claude session that made it,
+and to the one that reviewed it. It reads two places:
+
+- The Claude desktop app records, per Code session, the PRs that session created or pushed, in
+  `~/Library/Application Support/Claude/claude-code-sessions`. A PR the session only mentioned
+  does not count. The **Claude** button links to `claude://claude.ai/epitaxy/<session>`, which
+  the desktop app opens; an archived session shows faded.
+- Claude Code in VS Code or the terminal writes a transcript per session under
+  `~/.claude/projects`, with a `pr-link` line for each PR it notices. A PR counts as made when
+  the tool call just before that line ran `git push` or `gh pr create`, and as reviewed when it
+  posted a review or a comment. The **VS Code** button links to
+  `vscode://anthropic.claude-code/open?session=<id>`. Each transcript is re-read only when it
+  changes.
+
+Your own PRs show the session that made them; the two review tabs show the session that
+reviewed them.
 
 The list is read on every refresh and only answered to a `localhost` / `127.0.0.1` Host,
 with no CORS header, so other sites cannot read it. Served any other way (`file://`, a plain
