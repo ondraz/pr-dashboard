@@ -38,6 +38,8 @@ straight from the browser with a token you provide.
   a spinner in the Refresh button, and how far each phase has got
   (`Loading... repositories 3/8 · reviews 12/40 · comments 20/40`) where `Updated ... ago`
   sits; the previous list stays on screen, faded, until it lands
+- A `Claude` button on any PR a Claude desktop session created or pushed, which opens that
+  session in the desktop app (see [Claude sessions](#claude-sessions))
 - Light and dark theme, following the system setting
 
 ## Cross-repo grouping
@@ -127,6 +129,19 @@ make stop           # stop the server
 Opening `index.html` directly over `file://` also works in Safari, which isolates
 `localStorage` per file. Firefox and Chrome share `localStorage` across all local files,
 so any other local page could read the token there - use the localhost server instead.
+
+## Claude sessions
+
+The Claude desktop app records, per Code session, the PRs that session created or pushed.
+`make serve` runs [serve.py](serve.py), which serves the page and also answers
+`/sessions.json`: each PR URL mapped to the most recently active session that made it, read
+from `~/Library/Application Support/Claude/claude-code-sessions`. A PR the session only
+mentioned does not count. The button links to `claude://claude.ai/epitaxy/<session>`, which
+the desktop app opens; an archived session shows faded.
+
+The list is read on every refresh and only answered to a `localhost` / `127.0.0.1` Host,
+with no CORS header, so other sites cannot read it. Served any other way (`file://`, a plain
+static server) the request fails quietly and the button is simply absent.
 
 ## Collapsing
 
