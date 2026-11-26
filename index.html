@@ -544,6 +544,44 @@
         .filter-btn:hover { border-color: var(--color-text-secondary); color: var(--color-text); }
         .filter-btn.active { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-btn-text); }
 
+        .tab-bar {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--color-border);
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -1px;
+            color: var(--color-text-secondary);
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .tab-btn:hover { color: var(--color-text); }
+        .tab-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+        .tab-btn[aria-selected="true"] { color: var(--color-text); font-weight: 600; border-bottom-color: var(--color-accent); }
+
+        .tab-count {
+            font-size: 12px;
+            font-weight: 500;
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            padding: 0 7px;
+            border-radius: 20px;
+        }
+
+        .grouping-controls { display: flex; gap: 8px; align-items: center; }
+
         .review-status {
             flex-shrink: 0;
             font-size: 11px;
@@ -814,6 +852,12 @@
             </div>
         </div>
 
+        <div class="tab-bar" id="tabs" role="tablist" aria-label="Pull request lists" style="display:none" onkeydown="tabKeydown(event)">
+            <button class="tab-btn" role="tab" id="tab-mine" data-tab="mine" aria-controls="content" onclick="setTab('mine')">My PRs <span class="tab-count" id="tab-count-mine">-</span></button>
+            <button class="tab-btn" role="tab" id="tab-reviews" data-tab="reviews" aria-controls="content" onclick="setTab('reviews')">Waiting for my review <span class="tab-count" id="tab-count-reviews">-</span></button>
+            <button class="tab-btn" role="tab" id="tab-reviewed" data-tab="reviewed" aria-controls="content" onclick="setTab('reviewed')">Reviewed by me <span class="tab-count" id="tab-count-reviewed">-</span></button>
+        </div>
+
         <div class="filter-bar" id="filters" style="display:none">
             <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">All</button>
             <button class="filter-btn" data-filter="open" onclick="setFilter('open', this)">Ready</button>
@@ -821,12 +865,11 @@
             <span style="color:var(--color-border);margin:0 4px">|</span>
             <button class="filter-btn active" data-age="recent" onclick="setAgeFilter('recent', this)">Recent</button>
             <button class="filter-btn" data-age="all" onclick="setAgeFilter('all', this)">All time</button>
-            <span style="color:var(--color-border);margin:0 4px">|</span>
-            <button class="filter-btn active" data-group="repo" onclick="setGrouping('repo', this)">By repo</button>
-            <button class="filter-btn" data-group="feature" onclick="setGrouping('feature', this)">By feature</button>
-            <span style="color:var(--color-border);margin:0 4px">|</span>
-            <label class="remember-label"><input type="checkbox" id="reviews-check" onchange="setShowSection('reviews', this.checked)"> Waiting for my review</label>
-            <label class="remember-label"><input type="checkbox" id="reviewed-check" onchange="setShowSection('reviewed', this.checked)"> Reviewed by me</label>
+            <span class="grouping-controls" id="grouping-controls">
+                <span style="color:var(--color-border);margin:0 4px">|</span>
+                <button class="filter-btn active" data-group="repo" onclick="setGrouping('repo', this)">By repo</button>
+                <button class="filter-btn" data-group="feature" onclick="setGrouping('feature', this)">By feature</button>
+            </span>
         </div>
 
         <div id="content">
@@ -847,10 +890,8 @@
         let allPRs = [];
         let reviewPRs = [];
         let reviewedPRs = [];
-        const sectionShown = {
-            reviews: localStorage.getItem("show_reviews") !== "0",
-            reviewed: localStorage.getItem("show_reviewed") !== "0",
-        };
+        const TABS = ["mine", "reviews", "reviewed"];
+        let currentTab = "mine";
         let allRepoNodes = [];
         // The PRs that pass the current filters, by "repo#number". A stack is drawn once, under
         // whichever group reaches it first, so its members are looked up here rather than in
@@ -1425,6 +1466,7 @@
 
             document.getElementById("setup").style.display = "none";
             document.getElementById("filters").style.display = "flex";
+            document.getElementById("tabs").style.display = "flex";
 
             // Only show full loading spinner if we have no data yet
             if (allPRs.length === 0) {
@@ -1484,14 +1526,15 @@
 
                 const repoOf = (pr) => pr.repository_url.replace("https://api.github.com/repos/", "");
 
-                const prs = await searchPRs(`author:${login}`);
-                // The search hit alone is enough here: these rows show who asked and when, not
-                // stacks or review state, so they cost no per-PR calls.
-                const requested = sectionShown.reviews ? await searchPRs(`review-requested:${login}`) : [];
-                // A PR waiting for your review again is already listed above, so it is left out here.
-                const reviewed = sectionShown.reviewed
-                    ? await searchPRs(`reviewed-by:${login}+-author:${login}+-review-requested:${login}`)
-                    : [];
+                // Every tab is searched on each refresh, so each one's count stays current.
+                // The review-requested hits alone are enough: those rows show who asked and when,
+                // not stacks or review state, so they cost no per-PR calls. A PR waiting for your
+                // review again belongs in that tab, so it is left out of the reviewed one.
+                const [prs, requested, reviewed] = await Promise.all([
+                    searchPRs(`author:${login}`),
+                    searchPRs(`review-requested:${login}`),
+                    searchPRs(`reviewed-by:${login}+-author:${login}+-review-requested:${login}`),
+                ]);
                 const repoNames = [...new Set(prs.map(repoOf))];
 
                 const progress = createRefreshProgress([
@@ -1635,10 +1678,8 @@
 
                 allPRs = enriched;
                 const reviewedResult = await reviewedPromise;
-                reviewPRs = sectionShown.reviews
-                    ? requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }))
-                    : [];
-                reviewedPRs = sectionShown.reviewed ? reviewedResult : [];
+                reviewPRs = requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }));
+                reviewedPRs = reviewedResult;
                 lastFetchTime = new Date();
                 document.getElementById("total-count").textContent = allPRs.length;
                 renderPRs();
@@ -1661,6 +1702,7 @@
                 document.getElementById("refresh-announce").textContent = `Refresh failed: ${err.message}`;
                 document.getElementById("setup").style.display = "";
                 document.getElementById("filters").style.display = "none";
+                document.getElementById("tabs").style.display = "none";
             }
         }
 
@@ -1672,18 +1714,34 @@
             renderPRs();
         }
 
-        // Turning the list on fetches it at once; while it is off it is not searched at all.
-        function setShowSection(name, show) {
-            sectionShown[name] = show;
-            localStorage.setItem(`show_${name}`, show ? "1" : "0");
-            if (show) {
-                if (isFetching) refetchQueued = true;
-                else fetchPRs();
-            } else {
-                if (name === "reviews") reviewPRs = [];
-                if (name === "reviewed") reviewedPRs = [];
-                renderPRs();
-            }
+        // All three lists are fetched on every refresh, so switching tabs only re-renders.
+        function setTab(tab, focus) {
+            if (!TABS.includes(tab)) tab = "mine";
+            currentTab = tab;
+            try { localStorage.setItem("tab", tab); } catch (e) {}
+            document.querySelectorAll(".tab-btn").forEach(b => {
+                const selected = b.dataset.tab === tab;
+                b.setAttribute("aria-selected", selected ? "true" : "false");
+                b.tabIndex = selected ? 0 : -1;
+                if (selected && focus) b.focus();
+            });
+            // Grouping by repo or feature only applies to your own PRs.
+            document.getElementById("grouping-controls").style.display = tab === "mine" ? "" : "none";
+            document.getElementById("content").setAttribute("aria-labelledby", `tab-${tab}`);
+            if (allPRs.length || reviewPRs.length || reviewedPRs.length) renderPRs();
+        }
+
+        // Arrow keys move between tabs, as in any tablist.
+        function tabKeydown(event) {
+            const i = TABS.indexOf(currentTab);
+            let next = null;
+            if (event.key === "ArrowRight") next = TABS[(i + 1) % TABS.length];
+            else if (event.key === "ArrowLeft") next = TABS[(i - 1 + TABS.length) % TABS.length];
+            else if (event.key === "Home") next = TABS[0];
+            else if (event.key === "End") next = TABS[TABS.length - 1];
+            if (!next) return;
+            event.preventDefault();
+            setTab(next, true);
         }
 
         function setAgeFilter(age, btn) {
@@ -2080,8 +2138,8 @@
         }
 
         function reviewSectionHtml(prs) {
-            if (prs.length === 0) return "";
-            let html = `<div class="section-label">Waiting for your review</div>`;
+            if (prs.length === 0) return `<div class="empty">Nothing is waiting for your review.</div>`;
+            let html = "";
             for (const [repo, list] of byRepo(prs)) {
                 const key = `review-repo:${repo}`;
                 const collapsed = isCollapsed(key);
@@ -2133,8 +2191,8 @@
         }
 
         function reviewedSectionHtml(prs) {
-            if (prs.length === 0) return "";
-            let html = `<div class="section-label">Reviewed by me, not merged</div>`;
+            if (prs.length === 0) return `<div class="empty">No open pull requests you have reviewed.</div>`;
+            let html = "";
             for (const status of REVIEWED_STATUSES) {
                 const list = prs.filter(pr => reviewedStatus(pr) === status.key)
                     .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
@@ -2164,10 +2222,23 @@
             };
 
             const filtered = applyFilters(allPRs);
-            const reviewHtml = reviewSectionHtml(applyFilters(reviewPRs)) + reviewedSectionHtml(applyFilters(reviewedPRs));
+            const filteredReviews = applyFilters(reviewPRs);
+            const filteredReviewed = applyFilters(reviewedPRs);
+            document.getElementById("tab-count-mine").textContent = filtered.length;
+            document.getElementById("tab-count-reviews").textContent = filteredReviews.length;
+            document.getElementById("tab-count-reviewed").textContent = filteredReviewed.length;
+
+            if (currentTab === "reviews") {
+                document.getElementById("content").innerHTML = reviewSectionHtml(filteredReviews);
+                return;
+            }
+            if (currentTab === "reviewed") {
+                document.getElementById("content").innerHTML = reviewedSectionHtml(filteredReviewed);
+                return;
+            }
 
             if (filtered.length === 0) {
-                document.getElementById("content").innerHTML = `<div class="empty">No pull requests found.</div>${reviewHtml}`;
+                document.getElementById("content").innerHTML = `<div class="empty">No pull requests found.</div>`;
                 return;
             }
 
@@ -2191,7 +2262,6 @@
                 for (const [repo, prs] of byRepo(filtered)) html += repoGroupHtml(repo, prs, renderedStacks);
             }
 
-            html += reviewHtml;
             document.getElementById("content").innerHTML = html;
         }
 
@@ -2301,8 +2371,6 @@
                 });
             }
 
-            document.getElementById("reviews-check").checked = sectionShown.reviews;
-            document.getElementById("reviewed-check").checked = sectionShown.reviewed;
 
             const savedGrouping = localStorage.getItem("grouping");
             if (savedGrouping !== null) {
@@ -2311,6 +2379,10 @@
                     b.classList.toggle("active", b.dataset.group === savedGrouping);
                 });
             }
+
+            let savedTab = null;
+            try { savedTab = localStorage.getItem("tab"); } catch (e) {}
+            setTab(savedTab || "mine");
         }
 
         restoreSettings();
