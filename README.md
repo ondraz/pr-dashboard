@@ -27,6 +27,9 @@ straight from the browser with a token you provide.
 - Conflicts badge on any PR GitHub cannot merge until its conflicts with the base branch are
   resolved; GitHub works mergeability out in the background after a push, so a fresh conflict
   can take one more refresh to appear
+- Tabs for your own PRs, PRs waiting for your review, and PRs you have reviewed that are
+  not merged yet (grouped by where your review stands), each with a count that follows the
+  current filters; the selected tab is remembered across reloads
 - Draft state, with filters for all / ready / draft
 - Age filter: recently updated (last two weeks) or all time
 - Collapsible feature, repository and stack sections, remembered across reloads
