@@ -38,6 +38,8 @@
             --color-automerge-bg: #dafbe1;
             --color-mergequeue-accent: #9a6700;
             --color-mergequeue-bg: #fff8c5;
+            --color-session-accent: #c15f3c;
+            --color-session-bg: #fbf0ea;
         }
 
         @media (prefers-color-scheme: dark) {
@@ -73,6 +75,8 @@
                 --color-automerge-bg: #12261e;
                 --color-mergequeue-accent: #d29922;
                 --color-mergequeue-bg: #2e2412;
+                --color-session-accent: #e08a68;
+                --color-session-bg: #2e1c14;
             }
         }
 
@@ -479,6 +483,26 @@
 
         .unresolved-badge:hover { border-color: var(--color-unresolved-text); }
         .unresolved-badge .unresolved-icon { width: 11px; height: 11px; flex-shrink: 0; }
+
+        .session-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--color-session-accent);
+            background: var(--color-session-bg);
+            border: 1px solid transparent;
+            border-radius: 20px;
+            padding: 1px 8px;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .session-badge:hover { border-color: var(--color-session-accent); }
+        .session-badge svg { width: 11px; height: 11px; flex-shrink: 0; }
+        .session-badge.archived { opacity: 0.6; }
 
         .pr-updated {
             flex-shrink: 0;
@@ -893,6 +917,9 @@
         const TABS = ["mine", "reviews", "reviewed"];
         let currentTab = "mine";
         let allRepoNodes = [];
+        // PR URL -> the Claude desktop session that made it, from `make serve`'s /sessions.json.
+        // Empty when the page is served any other way, which just leaves the button out.
+        let prSessions = new Map();
         // The PRs that pass the current filters, by "repo#number". A stack is drawn once, under
         // whichever group reaches it first, so its members are looked up here rather than in
         // that group's own PRs - otherwise your other members would render as muted context.
@@ -987,6 +1014,10 @@
 
         function chevronIcon() {
             return `<svg class="collapse-chevron" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"></path></svg>`;
+        }
+
+        function sparkIcon() {
+            return `<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0a.75.75 0 0 1 .73.58l.6 2.6a3.75 3.75 0 0 0 2.89 2.89l2.6.6a.75.75 0 0 1 0 1.46l-2.6.6a3.75 3.75 0 0 0-2.89 2.89l-.6 2.6a.75.75 0 0 1-1.46 0l-.6-2.6a3.75 3.75 0 0 0-2.89-2.89l-2.6-.6a.75.75 0 0 1 0-1.46l2.6-.6a3.75 3.75 0 0 0 2.89-2.89l.6-2.6A.75.75 0 0 1 8 0Z"></path></svg>`;
         }
 
         function linkIcon() {
@@ -1457,6 +1488,17 @@
 
         let lastFetchTime = null;
 
+        async function fetchPRSessions() {
+            if (location.protocol === "file:") return new Map();
+            try {
+                const res = await fetch("sessions.json", { cache: "no-store" });
+                if (!res.ok) return new Map();
+                return new Map(Object.entries(await res.json()));
+            } catch (err) {
+                return new Map();
+            }
+        }
+
         async function fetchPRs() {
             const token = getToken();
             if (!token) return;
@@ -1554,6 +1596,8 @@
                     progress.set("comments", prs.length);
                     return new Map();
                 });
+
+                const sessionsPromise = fetchPRSessions();
 
                 const limitPRRequest = createLimiter(PR_REQUEST_CONCURRENCY);
                 const getJSON = (url, label) => limitPRRequest(async () => {
@@ -1676,6 +1720,7 @@
                     pr.mergeQueue = entry ? entry.mergeQueue : null;
                 }
 
+                prSessions = await sessionsPromise;
                 allPRs = enriched;
                 const reviewedResult = await reviewedPromise;
                 reviewPRs = requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }));
@@ -1807,6 +1852,16 @@
             return `<span class="unresolved-badge" title="${total} unresolved review ${total === 1 ? "thread" : "threads"} in this group">${commentIcon()}${total}</span>`;
         }
 
+        function sessionBadgeHtml(pr) {
+            const session = prSessions.get(pr.html_url);
+            if (!session || !/^local_[0-9a-f-]+$/i.test(session.id)) return "";
+            const state = session.archived ? " (archived)" : "";
+            const title = `Open the Claude session that made this PR${state}${session.title ? `: ${session.title}` : ""}`;
+            return `<a class="session-badge${session.archived ? " archived" : ""}" href="claude://claude.ai/epitaxy/${esc(session.id)}"
+                title="${esc(title)}" aria-label="${esc(title)}"
+            >${sparkIcon()}Claude</a>`;
+        }
+
         function featureBadgeHtml(pr) {
             if (currentGrouping !== "repo" || !pr.feature) return "";
             const repoCount = featureSpan.get(pr.feature.key);
@@ -1892,6 +1947,7 @@
                         #${parseInt(pr.number)} opened ${timeAgo(pr.created_at)}${baseMetaHtml(node)}
                     </div>
                 </div>
+                ${sessionBadgeHtml(pr)}
                 ${unresolvedBadgeHtml(pr)}
                 ${reviewBadge}
                 <div class="pr-updated">${timeAgo(pr.updated_at)}</div>

@@ -2,12 +2,13 @@
 
 PORT ?= 6789
 
-# serve the dashboard on localhost (a real origin isolates the stored token from other local files)
+# serve the dashboard on localhost (a real origin isolates the stored token from other local files,
+# and serve.py also tells the page which Claude desktop session made each PR)
 serve:
 	@ if lsof -ti:$(PORT) >/dev/null 2>&1; then \
 		echo "Server already running on port $(PORT)"; \
 	else \
-		python3 -m http.server $(PORT) --bind 127.0.0.1 -d . >/dev/null 2>&1 & \
+		python3 serve.py $(PORT) >/dev/null 2>&1 & \
 		echo "Server started on port $(PORT) (pid $$!)"; \
 	fi
 	@ python3 -m webbrowser http://localhost:$(PORT)/
