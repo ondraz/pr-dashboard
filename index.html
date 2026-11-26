@@ -617,6 +617,7 @@
         .review-approved { background: var(--color-review-approved-bg); color: var(--color-open); border: 1px solid var(--color-review-approved-border); }
         .review-changes { background: var(--color-review-changes-bg); color: var(--color-review-changes-text); border: 1px solid var(--color-review-changes-border); }
         .review-pending { background: var(--color-bg); color: var(--color-text-secondary); border: 1px solid var(--color-border); }
+        .review-waiting { opacity: 0.6; }
 
         .stack-group {
             box-shadow: inset 3px 0 0 var(--color-stack-accent);
@@ -1272,7 +1273,7 @@
         // nor the verdict exists in REST, so this is the one GraphQL call the dashboard makes;
         // merge-queue membership rides along for the same reason. PRs are batched into a single
         // query by alias; a failure leaves the counts unknown and the badge simply does not render.
-        async function fetchOutstandingWork(prs, token, onProgress) {
+        async function fetchOutstandingWork(prs, token, onProgress, login) {
             const counts = new Map();
             if (prs.length === 0) return counts;
 
@@ -1302,13 +1303,14 @@
                     pageInfo { hasNextPage endCursor }
                     nodes {
                         isResolved
-                        comments(first: 1) { totalCount nodes { pullRequestReview { id } } }
+                        comments(first: 1) { totalCount nodes { pullRequestReview { id } author { login } } }
+                        lastComment: comments(last: 1) { nodes { author { login } } }
                     }
                 }`;
             const reviewsField = `reviews(last: ${REVIEW_HISTORY_CAP}) { nodes { id databaseId state body author { login } } }`;
 
             const entryFor = (key) => {
-                if (!counts.has(key)) counts.set(key, { threads: 0, comments: 0, threadedReviews: new Set(), copilot: null, mergeQueue: null });
+                if (!counts.has(key)) counts.set(key, { threads: 0, comments: 0, mine: 0, replies: 0, threadedReviews: new Set(), copilot: null, mergeQueue: null });
                 return counts.get(key);
             };
 
@@ -1323,6 +1325,13 @@
                     if (thread.isResolved) continue;
                     entry.threads++;
                     entry.comments += thread.comments ? thread.comments.totalCount : 1;
+                    // Threads the viewer opened, and those where someone else spoke last.
+                    const starter = comment && comment.author ? comment.author.login : null;
+                    if (login && starter === login) {
+                        entry.mine++;
+                        const last = thread.lastComment && thread.lastComment.nodes ? thread.lastComment.nodes[0] : null;
+                        if (last && last.author && last.author.login !== login) entry.replies++;
+                    }
                 }
             };
 
@@ -1590,9 +1599,8 @@
                 const repoOf = (pr) => pr.repository_url.replace("https://api.github.com/repos/", "");
 
                 // Every tab is searched on each refresh, so each one's count stays current.
-                // The review-requested hits alone are enough: those rows show who asked and when,
-                // not stacks or review state, so they cost no per-PR calls. A PR waiting for your
-                // review again belongs in that tab, so it is left out of the reviewed one.
+                // A PR waiting for your review again belongs in that tab, so it is left out of
+                // the reviewed one.
                 const [prs, requested, reviewed] = await Promise.all([
                     searchPRs(`author:${login}`),
                     searchPRs(`review-requested:${login}`),
@@ -1616,6 +1624,17 @@
                     console.warn("Failed to read unresolved review state:", err);
                     progress.set("comments", prs.length);
                     return new Map();
+                });
+
+                // Your threads on the PRs waiting for you: open ones, and ones answered since.
+                const requestedWorkPromise = fetchOutstandingWork(
+                    requested.map(pr => ({ repoFullName: repoOf(pr), number: pr.number })),
+                    token,
+                    null,
+                    login,
+                ).catch(err => {
+                    console.warn("Failed to read review threads on requested PRs:", err);
+                    return null;
                 });
 
                 const sessionsPromise = fetchPRSessions();
@@ -1643,7 +1662,8 @@
                     }
                 };
 
-                const reviewedPromise = Promise.all(reviewed.map(async (pr) => {
+                // Your own standing on a PR: the verdict you left and whether it predates the head.
+                const withMyReview = async (pr) => {
                     const repoFullName = repoOf(pr);
                     const [detail, reviews] = await Promise.all([
                         getJSON(`https://api.github.com/repos/${repoFullName}/pulls/${pr.number}`, `details for ${repoFullName}#${pr.number}`),
@@ -1663,8 +1683,15 @@
                         isDraft: !!detail.draft,
                         myVerdict: verdict && verdict.state !== "DISMISSED" ? verdict.state : "COMMENTED",
                         updatedSinceReview: !!(last && last.commit_id !== headSha),
+                        lastReviewAt: last ? last.submitted_at : null,
+                        lastReviewSha: last ? last.commit_id : null,
+                        headSha,
                     };
-                }));
+                };
+                const reviewedPromise = Promise.all(reviewed.map(withMyReview));
+                // A review request can outlive your review (re-requested, or kept by automation),
+                // so the waiting list shows where your last review stands too.
+                const requestedPromise = Promise.all(requested.map(withMyReview));
 
                 // The search hit lacks branches, reviewers and auto-merge, so every PR needs its
                 // own details call; a failed one leaves that PR out of its stack.
@@ -1744,7 +1771,23 @@
                 prSessions = await sessionsPromise;
                 allPRs = enriched;
                 const reviewedResult = await reviewedPromise;
-                reviewPRs = requested.map(pr => ({ ...pr, repoFullName: repoOf(pr), isDraft: !!pr.draft }));
+                const requestedWork = await requestedWorkPromise;
+                reviewPRs = (await requestedPromise).map(pr => {
+                    const entry = requestedWork ? requestedWork.get(`${pr.repoFullName}#${pr.number}`) : null;
+                    if (!entry) return { ...pr, threadsLoaded: !!requestedWork };
+                    const verdict = entry.copilot && entry.copilot.owing
+                        && !entry.threadedReviews.has(entry.copilot.id) ? entry.copilot : null;
+                    return {
+                        ...pr,
+                        threadsLoaded: true,
+                        myOpenThreads: entry.mine,
+                        myReplies: entry.replies,
+                        unresolvedThreads: entry.threads,
+                        unresolvedComments: entry.comments,
+                        copilotVerdict: verdict,
+                        unresolved: entry.threads + (verdict ? 1 : 0),
+                    };
+                });
                 reviewedPRs = reviewedResult;
                 lastFetchTime = new Date();
                 liveFingerprint = await baselinePromise;
@@ -1859,7 +1902,8 @@
             if (pr.unresolvedThreads) {
                 const comments = pr.unresolvedComments || pr.unresolvedThreads;
                 parts.push(`${pr.unresolvedThreads} unresolved review ${pr.unresolvedThreads === 1 ? "thread" : "threads"}`
-                    + ` (${comments} ${comments === 1 ? "comment" : "comments"})`);
+                    + ` (${comments} ${comments === 1 ? "comment" : "comments"})`
+                    + (pr.myOpenThreads ? `, ${pr.myOpenThreads} yours` : ""));
             }
             if (pr.copilotVerdict) parts.push(`Copilot: ${pr.copilotVerdict.label}`);
             // With nothing open inline, the verdict itself is what there is to read.
@@ -2225,9 +2269,52 @@
                     </div>
                 </div>
                 ${sessionBadgeHtml(pr, "reviewed")}
-                <a class="review-status review-pending" href="${esc(pr.html_url)}/files" target="_blank" rel="noopener noreferrer">Review</a>
+                ${unresolvedBadgeHtml(pr)}
+                ${reviewButtonHtml(pr)}
                 <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
             </div>`;
+        }
+
+        // What to do next on a PR waiting for you. This tab is a to-do list, so the color says
+        // whether you can act: green when one approval finishes it, faded while the author owes
+        // you, amber kept for a change request that still stands.
+        const WAITING_STATES = {
+            review: { text: "Review", label: "Not reviewed by you yet" },
+            rereview: { text: "Re-review", label: "New commits since your review" },
+            answered: { text: "Answered", label: "Someone answered in your open threads" },
+            author: { text: "Waiting on author", label: "Your threads or change request are still open" },
+            ready: { text: "Ready to approve", label: "Your threads are resolved and nothing changed since your review" },
+            approved: { text: "Approved", label: "You approved the current state" },
+            commented: { text: "Commented", label: "Review threads could not be loaded" },
+        };
+
+        function waitingState(pr) {
+            if (!pr.lastReviewAt) return "review";
+            if (pr.updatedSinceReview) return "rereview";
+            if (pr.myVerdict === "APPROVED") return "approved";
+            if (pr.myReplies) return "answered";
+            if (!pr.threadsLoaded) return pr.myVerdict === "CHANGES_REQUESTED" ? "author" : "commented";
+            if (pr.myOpenThreads || pr.myVerdict === "CHANGES_REQUESTED") return "author";
+            return "ready";
+        }
+
+        // A re-review needs only what was pushed since your last review.
+        function reviewHref(pr) {
+            if (pr.updatedSinceReview && pr.lastReviewSha && pr.headSha) {
+                return `${pr.html_url}/files/${pr.lastReviewSha}..${pr.headSha}`;
+            }
+            return `${pr.html_url}/files`;
+        }
+
+        function reviewButtonHtml(pr) {
+            const key = waitingState(pr);
+            const state = WAITING_STATES[key];
+            const badge = key === "ready" || key === "approved" ? "review-approved"
+                : key === "author" && pr.myVerdict === "CHANGES_REQUESTED" ? "review-changes"
+                : key === "author" ? "review-pending review-waiting" : "review-pending";
+            const title = pr.lastReviewAt ? `${state.label}. Your last review: ${timeAgo(pr.lastReviewAt)}` : state.label;
+            return `<a class="review-status ${badge}" href="${esc(reviewHref(pr))}" target="_blank" rel="noopener noreferrer"
+                title="${esc(title)}" aria-label="${esc(title)}">${state.text}</a>`;
         }
 
         function reviewSectionHtml(prs) {
@@ -2279,7 +2366,7 @@
                     </div>
                 </div>
                 ${sessionBadgeHtml(pr, "reviewed")}
-                <a class="review-status ${status.badge}" href="${esc(pr.html_url)}/files" target="_blank" rel="noopener noreferrer">${status.text}</a>
+                <a class="review-status ${status.badge}" href="${esc(reviewHref(pr))}" target="_blank" rel="noopener noreferrer">${status.text}</a>
                 <div class="pr-updated">${timeAgo(pr.updated_at)}</div>
             </div>`;
         }

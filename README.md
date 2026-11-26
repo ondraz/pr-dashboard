@@ -169,7 +169,8 @@ heading.
 
 ## Notes
 
-Each refresh costs a search call plus one details call and one review call per PR, one
+Each refresh costs a search call plus one details call and one review call per PR (yours and
+the ones waiting for or reviewed by you), one
 lookup per colleague PR a stack of yours sits on, and one GraphQL query per 10 PRs for the
 unresolved counts. Only your own PRs are fetched, never a repository's whole open-PR list,
 so a busy repository costs no more than a quiet one. Once the search returns, the REST calls
