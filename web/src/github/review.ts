@@ -3,6 +3,7 @@ import type { CommentTarget, ReviewEvent } from "../logic/review.ts";
 import { type GitHubClient, mutate, writeError } from "./client.ts";
 import type { ReactionContent } from "./gql/graphql.ts";
 import { graphql } from "./gql/index.ts";
+import { editPullRequest } from "./manage.ts";
 
 export const addPendingReviewMutation = graphql(`
     mutation AddPendingReview($pullRequestId: ID!, $commitOID: GitObjectID) {
@@ -353,19 +354,23 @@ export async function setThreadResolved(client: GitHubClient, threadId: string, 
     else await mutate(client, unresolveThreadMutation, { threadId });
 }
 
-/** The kinds of comment the viewer can edit: one on the PR, one in a review thread, and a review's summary. */
-export type CommentKind = "issue" | "review-comment" | "review";
+/**
+ * The kinds of comment the viewer can edit: one on the PR, one in a review thread, a review's summary, and the
+ * PR's description, whose id is the PR's.
+ */
+export type CommentKind = "issue" | "review-comment" | "review" | "description";
 
 export async function editComment(client: GitHubClient, kind: CommentKind, id: string, body: string): Promise<void> {
-    if (kind === "issue") await mutate(client, updateIssueCommentMutation, { id, body });
+    if (kind === "description") await editPullRequest(client, id, { body });
+    else if (kind === "issue") await mutate(client, updateIssueCommentMutation, { id, body });
     else if (kind === "review-comment") await mutate(client, updateReviewCommentMutation, { id, body });
     else await mutate(client, updateReviewMutation, { id, body });
 }
 
-/** Deletes a comment; a review's summary cannot be deleted, only edited. */
+/** Deletes a comment; a review's summary and the description cannot be deleted, only edited. */
 export async function deleteComment(
     client: GitHubClient,
-    kind: Exclude<CommentKind, "review">,
+    kind: Exclude<CommentKind, "review" | "description">,
     id: string,
 ): Promise<void> {
     if (kind === "issue") await mutate(client, deleteIssueCommentMutation, { id });

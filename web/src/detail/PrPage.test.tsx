@@ -241,7 +241,7 @@ describe("PR page", () => {
         expect(title.textContent).toContain("#12");
         expect(within(title).getByRole("link", { name: "Open #12 on GitHub" }).getAttribute("href")).toBe(PR_URL);
 
-        const subhead = title.nextElementSibling as HTMLElement;
+        const subhead = document.querySelector(".pr-subhead") as HTMLElement;
         expect(within(subhead).getByText("Open").className).toBe("state-pill open");
         expect(subhead.textContent).toContain("alice wants to merge 2 commits into mid from tip");
         expect(within(subhead).getByText("Auto-merge").title).toBe(

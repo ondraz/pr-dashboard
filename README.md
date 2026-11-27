@@ -66,7 +66,8 @@ one in the list as its tab, filters and grouping currently show it.
   through DOMPurify once more before they reach the page. At the bottom, the merge box: the review
   decision, the checks on the head commit counted by outcome, whether the branch merges cleanly
   (conflicts, out of date, blocked by the base branch's rules, still being worked out), and
-  auto-merge or the PR's place in the merge queue
+  auto-merge or the PR's place in the merge queue, with the actions that land it (see
+  [Managing the PR](#managing-the-pr))
 - **Commits**: the PR's commits, by day, each opening its own diff
 - **Files changed**: the diff, full width, with the changed files as a tree beside it. Typing in the
   tree's filter narrows the tree and the diffs to the paths that contain every word typed. Each
@@ -140,6 +141,30 @@ Nothing posts by accident: a comment on the diff goes into the pending review un
 otherwise. Every unsent comment, reply and edit is kept in `localStorage` per PR, file and line as
 you type, so a refresh or a reload never loses it, and its box reopens where it was. **Cancel**
 drops it.
+
+## Managing the PR
+
+With the same sign-in, the PR page also does what GitHub's merge box, header and comment box do. Each
+action is offered only where GitHub says you may take it, and GitHub's branch protection and merge queue
+apply as they do on github.com; merging over the base branch's rules stays on github.com.
+
+- **Merging.** Once the branch merges cleanly, the merge box offers the repository's allowed methods, the
+  one you used last first, and **Merge pull request**, **Squash and merge** or **Rebase and merge**. Nothing
+  merges on one click: a confirmation shows the commit headline and message GitHub would write, to edit
+  first (a rebase takes none). The merge is made at the head commit the page shows, so GitHub refuses it if
+  the branch moved since
+- **Auto-merge.** While reviews or checks still stand in the way, **Enable auto-merge** sets the PR to merge
+  by the chosen method once they pass, with the same confirmation; **Disable auto-merge** takes it back
+- **Merge queue.** On a base branch with a merge queue, **Add to merge queue** adds a PR that is ready, and
+  **Merge when ready** one that is not yet, which joins once it is; the queue decides how it merges.
+  **Remove from queue** takes it out
+- **Update branch** brings the base branch's new commits in, by a merge commit or by rebasing, when GitHub
+  says the branch can be updated
+- **Ready for review** and **Convert to draft** move the PR in and out of draft
+- **Close pull request** and **Reopen pull request** sit beside **Comment**; with a comment typed, they post
+  it first (**Close with comment**)
+- **Edit** beside the title renames the PR, and **Edit** on the description changes it, kept as a draft
+  until it is saved like any comment
 
 ## Cross-repo grouping
 
@@ -234,7 +259,8 @@ saved token loads the list, the sign-in form stays hidden, so to move from a tok
 3. Under **Webhook**, untick **Active**
 4. Under **Repository permissions**, set **Pull requests** and **Contents** to **Read and
    write**, and **Checks**, **Commit statuses** and **Actions** to **Read-only**. The write
-   permissions are for reviewing (see [Reviewing](#reviewing)) and the merge actions to come
+   permissions are for reviewing and managing PRs (see [Reviewing](#reviewing) and
+   [Managing the PR](#managing-the-pr)); merging needs **Contents** write
 5. Under **Where can this GitHub App be installed?**, pick **Only on this account**, then
    **Create GitHub App**
 6. Under **Install App**, install it on the organization and choose the repositories to include
@@ -364,7 +390,9 @@ The Files changed tab reads which files you viewed with one more GraphQL query p
 again with the PR. A review action is one write (two for the first comment of a review, which opens
 the review first), after which the PR, or for a viewed mark the viewed state, is read again so the
 page shows what GitHub made of it. A preview is one
-`POST /markdown` per text previewed.
+`POST /markdown` per text previewed. Managing the PR works the same way: one write per action (closing
+or reopening with a comment is two), then the PR is read again. A merge's confirmation reads GitHub's
+commit message once per method.
 
 ## Development
 
