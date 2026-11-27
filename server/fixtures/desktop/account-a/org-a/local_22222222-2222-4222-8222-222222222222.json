@@ -1,0 +1,14 @@
+{
+  "sessionId": "local_22222222-2222-4222-8222-222222222222",
+  "isArchived": true,
+  "lastActivityAt": 1700000200000,
+  "prs": [
+    {
+      "url": "https://github.com/example-org/gadgets/pull/7"
+    },
+    "not-a-pr",
+    {
+      "onlySeen": false
+    }
+  ]
+}

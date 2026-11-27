@@ -1,0 +1,2 @@
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Running it."}, {"type": "tool_use", "id": "toolu_x", "name": "Bash", "input": {"command": "git push"}}]}}
+{"type": "pr-link", "prUrl": "https://github.com/example-org/widgets/pull/96", "prNumber": 96}
