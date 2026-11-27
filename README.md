@@ -304,7 +304,8 @@ Without a client id the page offers only the token below.
 2. Set **Token name** (e.g. `pr-dashboard`) and **Expiration** (max 366 days)
 3. Under **Resource owner**, select yourself or the organization whose PRs you want to see
 4. Under **Repository access**, pick the repositories to include
-5. Under **Permissions > Repository permissions**, set **Pull requests** to **Read-only**
+5. Under **Permissions > Repository permissions**, set **Pull requests**, and for the Checks tab
+   **Checks** and **Commit statuses**, to **Read-only**
 6. Click **Generate token**. A token scoped to an organization has to be approved by an
    org owner before it works
 7. Run `make serve` to open the dashboard, then paste the token

@@ -391,6 +391,9 @@ describe("PR page", () => {
             "✕This branch has conflicts that must be resolvedwith mid",
             "✓Auto-merge enabled (squash) by alicemerges once checks and reviews pass",
         ]);
+        expect(within(box).getByRole("link", { name: "All checks have passed" }).getAttribute("href")).toBe(
+            "/acme/widgets/pull/12/checks",
+        );
     });
 
     it("steps to the next and previous PR in the list with ] and [", async () => {
@@ -559,6 +562,20 @@ describe("PR page", () => {
         server.use(github.query("CommitChecks", () => HttpResponse.json(commitChecksResponse(null))));
         open("/acme/widgets/pull/12/checks");
         expect(await screen.findByText("No checks ran on tip-sha.")).toBeTruthy();
+    });
+
+    it("says the checks could not be read rather than that none ran", async () => {
+        server.use(
+            github.query("CommitChecks", () =>
+                HttpResponse.json({
+                    ...commitChecksResponse(null),
+                    errors: [{ message: "Resource not accessible by personal access token" }],
+                }),
+            ),
+        );
+        open("/acme/widgets/pull/12/checks");
+        expect(await screen.findByText("Resource not accessible by personal access token")).toBeTruthy();
+        expect(screen.queryByText("No checks ran on tip-sha.")).toBeNull();
     });
 
     describe("with Claude", () => {
