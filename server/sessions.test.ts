@@ -1,10 +1,10 @@
-import { cp, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PrSession } from "../shared/sessions.ts";
-import { REVIEW_ACTION, SessionIndex } from "./sessions.ts";
+import { githubRepo, originRepo, REVIEW_ACTION, SessionIndex } from "./sessions.ts";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const W = "https://github.com/example-org/widgets/pull/";
@@ -84,12 +84,13 @@ describe("SessionIndex", () => {
                 [`${G}14`]: [flakyTestCli],
                 [`${G}16`]: [gadgetsCli],
             },
+            repos: {},
         });
     });
 
     it("returns nothing when neither directory exists", async () => {
         const missing = new SessionIndex(join(root, "no-desktop"), join(root, "no-projects"));
-        expect(await missing.read()).toEqual({ made: {}, reviewed: {} });
+        expect(await missing.read()).toEqual({ made: {}, reviewed: {}, repos: {} });
     });
 
     it("re-reads a transcript only when its modification time changes", async () => {
@@ -109,6 +110,62 @@ describe("SessionIndex", () => {
         const { made, reviewed } = await index.read();
         expect(made[`${W}3`]).toEqual([olderFlakyTest]);
         expect(reviewed[`${G}11`]).toBeUndefined();
+    });
+});
+
+describe("SessionIndex repositories", () => {
+    /** A checkout with `origin` set to `remote`, and a desktop session working in it, or in a worktree of it. */
+    async function sessionIn(name: string, remote: string, session: Record<string, unknown>) {
+        const commonDir = join(root, "checkouts", name, ".git");
+        await mkdir(commonDir, { recursive: true });
+        await writeFile(
+            join(commonDir, "config"),
+            `[core]\n\tbare = false\n[remote "upstream"]\n\turl = https://github.com/other/fork.git\n[remote "origin"]\n\turl = ${remote}\n`,
+        );
+        const dir = join(root, "desktop", "repos", "acct");
+        await mkdir(dir, { recursive: true });
+        await writeFile(
+            join(dir, `${session.sessionId}.json`),
+            JSON.stringify({ ...session, gitAnchors: [{ gitRoot: join(root, "checkouts", name), commonDir }] }),
+        );
+        return join(root, "checkouts", name);
+    }
+
+    it("lists each repository's recent desktop sessions with its checkout, leaving archived ones out", async () => {
+        const folder = await sessionIn("widgets", "git@github.com:Example-Org/Widgets.git", {
+            sessionId: "local_33333333-3333-4333-8333-333333333333",
+            title: "Polish widgets",
+            lastActivityAt: 1700000500000,
+        });
+        await sessionIn("widgets-old", "https://github.com/example-org/widgets", {
+            sessionId: "local_44444444-4444-4444-8444-444444444444",
+            title: "Old widgets work",
+            isArchived: true,
+            lastActivityAt: 1700000600000,
+        });
+        const { repos } = await index.read();
+        expect(repos).toEqual({
+            "example-org/widgets": {
+                folder,
+                sessions: [
+                    {
+                        id: "local_33333333-3333-4333-8333-333333333333",
+                        title: "Polish widgets",
+                        archived: false,
+                        lastActivityAt: 1700000500000,
+                    },
+                ],
+            },
+        });
+    });
+
+    it("reads a GitHub repository from every form of remote URL, and nothing from others", () => {
+        expect(githubRepo("git@github.com:Example-Org/widgets.git")).toBe("example-org/widgets");
+        expect(githubRepo("https://github.com/example-org/widgets")).toBe("example-org/widgets");
+        expect(githubRepo("https://token@github.com/example-org/widgets.git/")).toBe("example-org/widgets");
+        expect(githubRepo("ssh://git@github.com/example-org/my.repo.git")).toBe("example-org/my.repo");
+        expect(githubRepo("https://gitlab.com/example-org/widgets.git")).toBeNull();
+        expect(originRepo('[remote "upstream"]\n\turl = git@github.com:a/b.git\n')).toBeNull();
     });
 });
 

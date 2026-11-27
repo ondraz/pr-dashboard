@@ -116,6 +116,18 @@ describe("fixPrompt", () => {
         expect(nothing).toContain("No check is failing and no review thread is open");
     });
 
+    it("leaves the checks to the session when they could not be read", () => {
+        const prompt = fixPrompt({ pr, checks: null, threads, copilot: null });
+        expect(prompt).toContain(
+            "\nThe checks could not be read here; see them with `gh pr checks 12 --repo acme/widgets`.\n",
+        );
+        expect(prompt).toContain("\nMake any failing checks pass and address the unresolved review threads.\n");
+        expect(prompt).not.toContain("Failing checks:");
+        expect(reviewPrompt({ pr, checks: null, threads: [], copilot: null, lastReviewedOid: null })).toContain(
+            "The checks could not be read here",
+        );
+    });
+
     it("cuts a long comment short", () => {
         const long = promptThreads([reviewThread("T_9", "PRR_1", [{ login: "bob", bodyHTML: "x".repeat(2000) }])]);
         const prompt = fixPrompt({ pr, checks: [], threads: long, copilot: null });

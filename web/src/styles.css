@@ -3027,3 +3027,46 @@ kbd {
     flex-basis: 100%;
     font-size: 12px;
 }
+
+/* Fix or Review with Claude: each session a title and why it is offered, with Send beside them. */
+.agent-sessions li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title send" "meta send";
+    column-gap: 8px;
+    row-gap: 0;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+.agent-sessions li:last-child {
+    border-bottom: none;
+}
+.agent-sessions .session-title {
+    grid-area: title;
+}
+.agent-sessions .session-meta {
+    grid-area: meta;
+    width: auto;
+}
+.agent-sessions .agent-link {
+    grid-area: send;
+    align-self: center;
+}
+.agent-folder {
+    margin-top: 6px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+/* A link drawn as the primary button keeps the button's text colour, not a link's. */
+a.primary-btn,
+a.primary-btn:visited,
+a.primary-btn:hover,
+.agent-link.primary-btn {
+    color: var(--color-btn-text);
+    text-decoration: none;
+}
+.agent-paste {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-session-accent);
+}

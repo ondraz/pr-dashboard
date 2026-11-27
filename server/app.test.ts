@@ -69,7 +69,7 @@ describe("createApp", () => {
         expect(res.headers.get("Cache-Control")).toBe("no-store");
         expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
         const body = (await res.json()) as SessionsPayload;
-        expect(Object.keys(body)).toEqual(["made", "reviewed"]);
+        expect(Object.keys(body)).toEqual(["made", "reviewed", "repos"]);
         expect(body.made["https://github.com/example-org/widgets/pull/1"]?.[0]?.title).toBe(
             "Add CSV export to widgets",
         );

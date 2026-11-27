@@ -44,8 +44,9 @@ export const LINK_PROMPT_LIMIT = 8000;
 const fits = (prompt: string) => prompt.length > 0 && prompt.length <= LINK_PROMPT_LIMIT;
 
 /**
- * Opens `session` for `prompt`. VS Code's link takes the prompt and puts it in the session's box; the
- * desktop app's link to a session takes none, so there it has to be pasted.
+ * Opens `session` for `prompt`. VS Code's link takes the prompt and puts it in the session's box. The
+ * desktop app's link to a session opens it but ignores a prompt (tried: `?q=` leaves the box empty), so
+ * there it has to be pasted.
  */
 export function resumeLink(
     session: PrSession,
@@ -60,12 +61,22 @@ export function resumeLink(
     return { ...link, carriesPrompt: false };
 }
 
-/** Starts a new Claude Code session with `prompt`, in the desktop app or in VS Code. */
-export function newSessionLinks(prompt: string): PromptLink[] {
+/**
+ * Starts a new Claude Code session with `prompt`, in the desktop app or in VS Code. The desktop app
+ * opens it in `folder`, the repository's checkout, when one is known; otherwise it asks for a folder.
+ */
+export function newSessionLinks(prompt: string, folder: string | null = null): PromptLink[] {
     const carriesPrompt = fits(prompt);
-    const query = (name: string) => (carriesPrompt ? `?${name}=${encodeURIComponent(prompt)}` : "");
+    const desktop = [
+        ...(carriesPrompt ? [`q=${encodeURIComponent(prompt)}`] : []),
+        ...(folder ? [`folder=${encodeURIComponent(folder)}`] : []),
+    ].join("&");
     return [
-        { app: "Claude", href: `claude://code/new${query("q")}`, carriesPrompt },
-        { app: "VS Code", href: `vscode://anthropic.claude-code/open${query("prompt")}`, carriesPrompt },
+        { app: "Claude", href: `claude://code/new${desktop ? `?${desktop}` : ""}`, carriesPrompt },
+        {
+            app: "VS Code",
+            href: `vscode://anthropic.claude-code/open${carriesPrompt ? `?prompt=${encodeURIComponent(prompt)}` : ""}`,
+            carriesPrompt,
+        },
     ];
 }
