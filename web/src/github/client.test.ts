@@ -1,0 +1,170 @@
+import { graphql as mockGraphql } from "msw/graphql";
+import { HttpResponse, http } from "msw/http";
+import { setupServer } from "msw/node";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { createGitHubClient, GraphqlError, graphql } from "./client.ts";
+import { RateLimitError, RateLimits } from "./rateLimits.ts";
+
+const server = setupServer();
+beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
+afterEach(() => server.resetHandlers());
+afterAll(() => server.close());
+
+const github = mockGraphql.link("https://api.github.com/graphql");
+
+function limitHeaders(remaining: number, resource = "core"): Record<string, string> {
+    return {
+        "x-ratelimit-limit": "5000",
+        "x-ratelimit-remaining": String(remaining),
+        "x-ratelimit-used": String(5000 - remaining),
+        "x-ratelimit-reset": "1795770000",
+        "x-ratelimit-resource": resource,
+    };
+}
+
+describe("createGitHubClient", () => {
+    it("sends the token and asks again with the ETag, serving the kept response on a 304", async () => {
+        const seen: (string | null)[] = [];
+        server.use(
+            http.get("https://api.github.com/user", ({ request }) => {
+                expect(request.headers.get("authorization")).toBe("token test-token");
+                const etag = request.headers.get("if-none-match");
+                seen.push(etag);
+                if (etag === '"v1"') return new HttpResponse(null, { status: 304, headers: limitHeaders(4998) });
+                return HttpResponse.json({ login: "alice" }, { headers: { etag: '"v1"', ...limitHeaders(4999) } });
+            }),
+        );
+        const rateLimits = new RateLimits();
+        const client = createGitHubClient({ token: "test-token", rateLimits });
+
+        const first = await client.request("GET /user");
+        const second = await client.request("GET /user");
+
+        expect(seen).toEqual([null, '"v1"']);
+        expect(first.data.login).toBe("alice");
+        expect(second.status).toBe(200);
+        expect(second.data.login).toBe("alice");
+        expect(second.headers["x-ratelimit-remaining"]).toBe("4998");
+        expect(rateLimits.snapshot().get("core")).toMatchObject({ remaining: 4998, used: 2, limit: 5000 });
+    });
+
+    it("keeps responses per URL", async () => {
+        let notModified = 0;
+        server.use(
+            http.get("https://api.github.com/repos/acme/widgets/pulls/:number", ({ params, request }) => {
+                if (request.headers.get("if-none-match") === `"pr${params.number}"`) {
+                    notModified++;
+                    return new HttpResponse(null, { status: 304 });
+                }
+                return HttpResponse.json(
+                    { number: Number(params.number) },
+                    { headers: { etag: `"pr${params.number}"` } },
+                );
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        const get = (pull_number: number) =>
+            client.request("GET /repos/{owner}/{repo}/pulls/{pull_number}", {
+                owner: "acme",
+                repo: "widgets",
+                pull_number,
+            });
+        await get(1);
+        await get(2);
+        expect((await get(1)).data.number).toBe(1);
+        expect((await get(2)).data.number).toBe(2);
+        expect(notModified).toBe(2);
+    });
+
+    it("bypasses the browser's HTTP cache", async () => {
+        const fetchSpy = vi.fn<typeof fetch>(async () => Response.json({ login: "alice" }));
+        await createGitHubClient({ token: "t", fetch: fetchSpy }).request("GET /user");
+        expect(fetchSpy.mock.calls[0]?.[1]?.cache).toBe("no-store");
+    });
+
+    it("turns an exhausted rate limit into a RateLimitError", async () => {
+        server.use(
+            http.get("https://api.github.com/user", () =>
+                HttpResponse.json({ message: "API rate limit exceeded" }, { status: 403, headers: limitHeaders(0) }),
+            ),
+        );
+        const rateLimits = new RateLimits();
+        const error = await createGitHubClient({ token: "t", rateLimits })
+            .request("GET /user")
+            .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(RateLimitError);
+        expect(error).toMatchObject({ resource: "core", resetAt: 1795770000000 });
+        expect(rateLimits.snapshot().get("core")?.remaining).toBe(0);
+    });
+
+    it("turns a secondary limit into a RateLimitError with its retry time", async () => {
+        server.use(
+            http.get("https://api.github.com/user", () =>
+                HttpResponse.json(
+                    { message: "secondary rate limit" },
+                    { status: 429, headers: { "retry-after": "60" } },
+                ),
+            ),
+        );
+        const before = Date.now();
+        const error = await createGitHubClient({ token: "t" })
+            .request("GET /user")
+            .catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(RateLimitError);
+        expect((error as RateLimitError).resetAt).toBeGreaterThanOrEqual(before + 60_000);
+    });
+
+    it("leaves other errors alone", async () => {
+        server.use(
+            http.get("https://api.github.com/user", () => HttpResponse.json({ message: "Not Found" }, { status: 404 })),
+        );
+        const error = await createGitHubClient({ token: "t" })
+            .request("GET /user")
+            .catch((e: unknown) => e);
+        expect(error).not.toBeInstanceOf(RateLimitError);
+        expect(error).toMatchObject({ status: 404 });
+    });
+});
+
+describe("graphql", () => {
+    it("returns data with the errors that came along, and records the GraphQL bucket", async () => {
+        server.use(
+            github.query("Viewer", ({ variables }) =>
+                HttpResponse.json(
+                    { data: { viewer: { login: variables.who } }, errors: [{ message: "one alias failed" }] },
+                    { headers: limitHeaders(4990, "graphql") },
+                ),
+            ),
+        );
+        const rateLimits = new RateLimits();
+        const client = createGitHubClient({ token: "t", rateLimits });
+        const result = await graphql<{ viewer: { login: string } }, { who: string }>(
+            client,
+            "query Viewer($who: String!) { viewer { login } }",
+            { who: "alice" },
+        );
+        expect(result).toEqual({ data: { viewer: { login: "alice" } }, errors: [{ message: "one alias failed" }] });
+        expect(rateLimits.snapshot().get("graphql")?.remaining).toBe(4990);
+    });
+
+    it("throws when there is no data at all", async () => {
+        server.use(github.query("Viewer", () => HttpResponse.json({ data: null, errors: [{ message: "bad query" }] })));
+        const promise = graphql(createGitHubClient({ token: "t" }), "query Viewer { viewer { login } }", {});
+        await expect(promise).rejects.toBeInstanceOf(GraphqlError);
+        await expect(promise).rejects.toThrow("bad query");
+    });
+
+    it("never sends a conditional request", async () => {
+        const conditional: (string | null)[] = [];
+        server.use(
+            github.query("Viewer", ({ request }) => {
+                conditional.push(request.headers.get("if-none-match"));
+                return HttpResponse.json({ data: { viewer: { login: "alice" } } }, { headers: { etag: '"g"' } });
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        await graphql(client, "query Viewer { viewer { login } }", {});
+        await graphql(client, "query Viewer { viewer { login } }", {});
+        expect(conditional).toEqual([null, null]);
+    });
+});

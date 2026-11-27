@@ -1,4 +1,4 @@
-.PHONY: serve stop build test lint format
+.PHONY: serve stop build codegen test lint format
 
 PORT ?= 6789
 URL = http://localhost:$(PORT)/
@@ -32,8 +32,13 @@ stop:
 		echo "No server running on port $(PORT)"; \
 	fi
 
-# lint, type check, tests and build, as CI runs them
+# regenerate the GraphQL types in web/src/github/gql from the queries in web/src/github
+codegen: node_modules/.package-lock.json
+	npm run codegen
+
+# codegen, lint, type check, tests and build, as CI runs them
 test: node_modules/.package-lock.json
+	npm run codegen
 	npm run lint
 	npm run typecheck
 	npm test

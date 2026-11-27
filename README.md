@@ -195,8 +195,9 @@ lags behind. A check run finishing does not count as a change, as the dashboard 
 ## Development
 
 ```bash
-make test           # lint, type check, tests and build, as CI runs them on every PR
+make test           # codegen, lint, type check, tests and build, as CI runs them on every PR
 make build          # build the React app into web/dist when its sources changed
+make codegen        # regenerate the GraphQL types after changing a query
 make format         # format and fix lint findings with Biome
 ```
 
@@ -210,6 +211,14 @@ server still serves until the app reaches parity; see [the plan](docs/review-app
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
 parsing, the Copilot verdict, unresolved counts, review standing, filters and the list layout -
 as plain TypeScript without React or I/O, each pinned by unit tests.
+
+`web/src/github/` is the GitHub API layer the app will load through: Octokit with REST
+pagination, typed GraphQL documents whose types GraphQL Code Generator writes into
+`web/src/github/gql/` from GitHub's published schema (committed; CI fails when they are stale),
+and the loaders for the three tabs. Every GET that returned an ETag is asked for again with
+`If-None-Match`, so an unchanged resource comes back as a 304, which does not count against the
+rate limit, and each response's rate-limit headers are collected per bucket for the page to
+show. Its tests run against a GitHub API mocked with MSW; nothing in them reaches GitHub.
 
 ## License
 
