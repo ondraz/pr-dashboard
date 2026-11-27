@@ -459,47 +459,6 @@ export type AssignableUsersQueryVariables = Exact<{
 
 export type AssignableUsersQuery = { repository: { assignableUsers: { nodes: Array<{ id: string, login: string, avatarUrl: string } | null> | null } } | null };
 
-export type RepositoryLabelsQueryVariables = Exact<{
-  owner: string;
-  name: string;
-  query?: string | null | undefined;
-}>;
-
-
-export type RepositoryLabelsQuery = { repository: { labels: { nodes: Array<{ id: string, name: string } | null> | null } | null } | null };
-
-export type AddLabelsMutationVariables = Exact<{
-  labelableId: string | number;
-  labelIds: Array<string | number> | string | number;
-}>;
-
-
-export type AddLabelsMutation = { addLabelsToLabelable: { clientMutationId: string | null } | null };
-
-export type RemoveLabelsMutationVariables = Exact<{
-  labelableId: string | number;
-  labelIds: Array<string | number> | string | number;
-}>;
-
-
-export type RemoveLabelsMutation = { removeLabelsFromLabelable: { clientMutationId: string | null } | null };
-
-export type AddAssigneesMutationVariables = Exact<{
-  assignableId: string | number;
-  assigneeIds: Array<string | number> | string | number;
-}>;
-
-
-export type AddAssigneesMutation = { addAssigneesToAssignable: { clientMutationId: string | null } | null };
-
-export type RemoveAssigneesMutationVariables = Exact<{
-  assignableId: string | number;
-  assigneeIds: Array<string | number> | string | number;
-}>;
-
-
-export type RemoveAssigneesMutation = { removeAssigneesFromAssignable: { clientMutationId: string | null } | null };
-
 type ActorFields_Bot_Fragment = { login: string, avatarUrl: string, url: string };
 
 type ActorFields_EnterpriseUserAccount_Fragment = { login: string, avatarUrl: string, url: string };
@@ -764,7 +723,7 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
             | { login: string, avatarUrl: string, url: string }
             | { login: string, avatarUrl: string, url: string }
             | { login: string, avatarUrl: string, url: string }
-           | null } | null> | null } | null, assignees: { nodes: Array<{ id: string, login: string, avatarUrl: string, url: string } | null> | null }, labels: { nodes: Array<{ id: string, name: string } | null> | null } | null, milestone: { title: string, url: string } | null, closingIssuesReferences: { nodes: Array<{ number: number, title: string, url: string, state: IssueState, repository: { nameWithOwner: string } } | null> | null } | null, commits: { totalCount: number }, pendingReview: { nodes: Array<{ id: string, comments: { totalCount: number } } | null> | null } | null, viewerLatestReview: { submittedAt: string | null, commit: { oid: string } | null } | null, reviews: { nodes: Array<{ id: string, databaseId: number | null, state: PullRequestReviewState, body: string, author:
+           | null } | null> | null } | null, closingIssuesReferences: { nodes: Array<{ number: number, title: string, url: string, state: IssueState, repository: { nameWithOwner: string } } | null> | null } | null, commits: { totalCount: number }, pendingReview: { nodes: Array<{ id: string, comments: { totalCount: number } } | null> | null } | null, viewerLatestReview: { submittedAt: string | null, commit: { oid: string } | null } | null, reviews: { nodes: Array<{ id: string, databaseId: number | null, state: PullRequestReviewState, body: string, author:
             | { login: string }
             | { login: string }
             | { login: string }
@@ -2129,52 +2088,6 @@ export const AssignableUsersDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<AssignableUsersQuery, AssignableUsersQueryVariables>;
-export const RepositoryLabelsDocument = new TypedDocumentString(`
-    query RepositoryLabels($owner: String!, $name: String!, $query: String) {
-  repository(owner: $owner, name: $name) {
-    labels(first: 50, query: $query, orderBy: { field: NAME, direction: ASC }) {
-      nodes {
-        id
-        name
-      }
-    }
-  }
-}
-    `) as unknown as TypedDocumentString<RepositoryLabelsQuery, RepositoryLabelsQueryVariables>;
-export const AddLabelsDocument = new TypedDocumentString(`
-    mutation AddLabels($labelableId: ID!, $labelIds: [ID!]!) {
-  addLabelsToLabelable(input: { labelableId: $labelableId, labelIds: $labelIds }) {
-    clientMutationId
-  }
-}
-    `) as unknown as TypedDocumentString<AddLabelsMutation, AddLabelsMutationVariables>;
-export const RemoveLabelsDocument = new TypedDocumentString(`
-    mutation RemoveLabels($labelableId: ID!, $labelIds: [ID!]!) {
-  removeLabelsFromLabelable(
-    input: { labelableId: $labelableId, labelIds: $labelIds }
-  ) {
-    clientMutationId
-  }
-}
-    `) as unknown as TypedDocumentString<RemoveLabelsMutation, RemoveLabelsMutationVariables>;
-export const AddAssigneesDocument = new TypedDocumentString(`
-    mutation AddAssignees($assignableId: ID!, $assigneeIds: [ID!]!) {
-  addAssigneesToAssignable(
-    input: { assignableId: $assignableId, assigneeIds: $assigneeIds }
-  ) {
-    clientMutationId
-  }
-}
-    `) as unknown as TypedDocumentString<AddAssigneesMutation, AddAssigneesMutationVariables>;
-export const RemoveAssigneesDocument = new TypedDocumentString(`
-    mutation RemoveAssignees($assignableId: ID!, $assigneeIds: [ID!]!) {
-  removeAssigneesFromAssignable(
-    input: { assignableId: $assignableId, assigneeIds: $assigneeIds }
-  ) {
-    clientMutationId
-  }
-}
-    `) as unknown as TypedDocumentString<RemoveAssigneesMutation, RemoveAssigneesMutationVariables>;
 export const PullRequestProbeDocument = new TypedDocumentString(`
     query PullRequestProbe($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -2261,22 +2174,6 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
             ...ActorFields
           }
         }
-      }
-      assignees(first: 20) {
-        nodes {
-          id
-          ...ActorFields
-        }
-      }
-      labels(first: 50) {
-        nodes {
-          id
-          name
-        }
-      }
-      milestone {
-        title
-        url
       }
       closingIssuesReferences(first: 20) {
         nodes {

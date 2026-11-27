@@ -44,11 +44,11 @@ export function usePullRequest(route: PrRoute) {
     });
 }
 
-export function usePullRequestCommits(route: PrRoute) {
+export function usePullRequestCommits(route: PrRoute, enabled = true) {
     const { github } = useDashboardState();
     return useQuery({
         queryKey: [...prQueryKey(github?.id, route), "commits"],
-        enabled: !!github,
+        enabled: enabled && !!github,
         queryFn: () => {
             if (!github) throw new Error("Not signed in");
             return loadPullRequestCommits(github.client, route);

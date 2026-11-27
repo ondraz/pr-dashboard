@@ -2879,3 +2879,151 @@ kbd {
     );
     border-radius: 0 0 6px 6px;
 }
+
+/* The side panel's list of what is still unresolved, each row a jump to its place in the conversation. */
+.unresolved-list {
+    gap: 2px;
+}
+.unresolved-list li {
+    display: block;
+}
+.unresolved-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    padding: 6px 8px;
+    margin: 0 -8px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: content-box;
+}
+.unresolved-item:hover,
+.unresolved-item:focus-visible {
+    background: var(--color-bg-secondary);
+}
+.unresolved-where {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+.unresolved-where code {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.unresolved-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+}
+.unresolved-text .avatar {
+    border-radius: 50%;
+    vertical-align: -3px;
+    margin-right: 4px;
+}
+.unresolved-text .who {
+    font-weight: 600;
+}
+.unresolved-replies {
+    font-size: 12px;
+}
+
+/* The head commit's checks in the side panel: mark, name, and GitHub's word for where it stands. */
+.sidebar-check-counts {
+    margin-bottom: 6px;
+}
+.sidebar-checks li.sidebar-check {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+.sidebar-check-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.sidebar-check-state {
+    font-size: 12px;
+    white-space: nowrap;
+}
+.sidebar-checks-more {
+    margin-top: 6px;
+}
+.sidebar-checks-more summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+}
+
+/* A thread or review the side panel jumped to, lit up for a moment. */
+.revealed {
+    animation: revealed 1.6s ease-out;
+    border-radius: 6px;
+}
+@keyframes revealed {
+    from {
+        box-shadow: 0 0 0 3px var(--color-accent);
+    }
+    to {
+        box-shadow: 0 0 0 3px transparent;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .revealed {
+        animation: none;
+    }
+}
+
+/* The side panel stays in view while the conversation scrolls, as the file tree does beside the diff. */
+@media (min-width: 901px) {
+    .pr-sidebar {
+        position: sticky;
+        top: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+}
+
+/* An open thread in the side panel: the tick that resolves it, then the jump to it. */
+.unresolved-list li.unresolved-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+}
+.unresolved-row .unresolved-item {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    padding: 4px 6px;
+    box-sizing: border-box;
+}
+.resolve-tick {
+    margin: 7px 0 0;
+    accent-color: var(--color-open);
+    cursor: pointer;
+}
+.resolve-tick:disabled {
+    cursor: not-allowed;
+}
+.resolve-error {
+    flex-basis: 100%;
+    font-size: 12px;
+}

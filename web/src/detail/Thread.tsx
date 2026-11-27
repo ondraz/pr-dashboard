@@ -1,7 +1,7 @@
 import { stepTo } from "../app/keys.ts";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { External } from "../list/PrRows.tsx";
-import { hunkTail, isPendingThread } from "../logic/conversation.ts";
+import { conversationAnchor, hunkTail, isPendingThread, threadLines } from "../logic/conversation.ts";
 import { timeAgo } from "../logic/time.ts";
 import { CommentBody } from "./CommentBody.tsx";
 import { NewTag } from "./NewTag.tsx";
@@ -50,12 +50,13 @@ export function stepThread(scope: string, direction: 1 | -1): boolean {
 export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDiff?: boolean }) {
     const comments = (thread.comments.nodes ?? []).filter((comment) => !!comment);
     const first = comments[0];
-    const line = thread.line ?? thread.originalLine;
-    const start = thread.startLine ?? thread.originalStartLine;
-    const where =
-        thread.subjectType === "FILE" ? "" : line ? `:${start && start !== line ? `${start}-` : ""}${line}` : "";
+    const where = threadLines(thread);
     return (
-        <details className={`thread${thread.isResolved ? " resolved" : ""}`} open={!thread.isResolved}>
+        <details
+            id={inDiff ? undefined : conversationAnchor(thread.id)}
+            className={`thread${thread.isResolved ? " resolved" : ""}`}
+            open={!thread.isResolved}
+        >
             <summary>
                 <code>
                     {thread.path}

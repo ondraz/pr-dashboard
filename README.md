@@ -118,10 +118,13 @@ within 90 days.
 - **Fix with Claude** and **Review with Claude**, beside the tabs of an open PR, hand a prompt built
   from the failing checks and the unresolved threads to a Claude session (see
   [Fix and review with Claude](#fix-and-review-with-claude))
-- The sidebar: reviewers and where each one's review stands, assignees, labels, the issues the PR
-  closes, the milestone, the **Stack** the PR sits in (anyone's PRs below it down to the base
-  branch and on top of it, each opening here), and **Sessions**: every Claude session that made
-  or reviewed the PR, the most recent first
+- The side panel, which stays in view while the conversation scrolls: **Unresolved comments**, each
+  open thread by file and line with the start of its first comment, a click away from its place in
+  the conversation, with a tick that resolves it (and Copilot's verdict when it counts on its own); **Checks** on the head commit,
+  failing and running ones first, the rest folded when there are many; reviewers and where each one's
+  review stands; the issues the PR closes; the **Stack** the PR sits in (anyone's PRs below it down to
+  the base branch and on top of it, each opening here); and **Sessions**: every Claude session that
+  made or reviewed the PR, the most recent first
 
 The page refreshes on the list's schedule. In live mode it has a change check of its own, like the
 list's, which also notices a check finishing and GitHub working out mergeability; otherwise it
@@ -204,10 +207,10 @@ apply as they do on github.com; merging over the base branch's rules stays on gi
   it first (**Close with comment**)
 - **Edit** beside the title renames the PR, and **Edit** on the description changes it, kept as a draft
   until it is saved like any comment
-- **Reviewers**, **Assignees** and **Labels** in the sidebar each have **Edit**, a menu of the repository's
-  assignable users (who are also who can review) or labels, filtered by GitHub's search as you type;
-  ticking one adds it to the PR and unticking takes it off, at once. The PR's author is never offered as
-  a reviewer. A team asked for a review has **Remove**, which withdraws the request
+- **Reviewers** in the side panel has **Edit**, a menu of the repository's assignable users (who are also
+  who can review), filtered by GitHub's search as you type; ticking one asks for their review and
+  unticking withdraws it, at once. The PR's author is never offered. A team asked for a review has
+  **Remove**, which withdraws the request
 - **Committing suggestions.** A comment with one `suggestion` block, on lines the head commit still has, in
   a thread nobody resolved, has **Commit suggestion**, which commits it to the PR's branch with GitHub's
   default message to edit, and resolves its thread. **Add suggestion to batch** gathers several instead;
@@ -332,8 +335,10 @@ Without a client id the page offers only the token below.
 2. Set **Token name** (e.g. `pr-dashboard`) and **Expiration** (max 366 days)
 3. Under **Resource owner**, select yourself or the organization whose PRs you want to see
 4. Under **Repository access**, pick the repositories to include
-5. Under **Permissions > Repository permissions**, set **Pull requests**, and for the Checks tab
-   **Checks** and **Commit statuses**, to **Read-only**
+5. Under **Permissions > Repository permissions**, set **Pull requests**, and for the checks
+   **Checks** and **Commit statuses**, to **Read-only**. Without **Contents** GitHub's GraphQL API
+   withholds the PR's commits, so the page reads them over REST instead (up to 250), and a single
+   commit's diff cannot be opened
 6. Click **Generate token**. A token scoped to an organization has to be approved by an
    org owner before it works
 7. Run `make serve` to open the dashboard, then paste the token
@@ -451,9 +456,11 @@ holds and each one's last update, head commit, mergeability, review decision, dr
 merge-queue position; a new or closed PR can take a minute to show, since GitHub's search index
 lags behind. A check run finishing does not count as a change, as the dashboard shows no CI.
 
-Opening a PR costs one GraphQL query for its header, sidebar, merge box, description, timeline and
-review threads, and one more per further 100 timeline events or threads (up to 1,000 of each). The
-Commits tab is one more query per 100 commits. The Files changed tab is one REST read per 100
+Opening a PR costs one GraphQL query for its header, side panel, merge box, description, timeline and
+review threads, and one more per further 100 timeline events or threads (up to 1,000 of each), plus
+the head commit's checks for the side panel, shared with the Checks tab. The Commits tab is one more
+query per 100 commits; when GitHub withholds them, one REST read per 100 more, which the conversation
+shares. The Files changed tab is one REST read per 100
 changed files (GitHub lists up to 3,000), read again with the PR, plus the PR's raw diff once per
 head commit when some file's patch is missing or cut. A single commit's diff is one REST read per
 300 files and a range one comparison (GitHub lists up to 300 of its files); neither is read again
@@ -474,7 +481,7 @@ the review first), after which the PR, or for a viewed mark the viewed state, is
 page shows what GitHub made of it. A preview is one
 `POST /markdown` per text previewed. Managing the PR works the same way: one write per action (closing
 or reopening with a comment is two), then the PR is read again. A merge's confirmation reads GitHub's
-commit message once per method. A sidebar menu reads the repository's users or labels once per filter
+commit message once per method. The reviewer menu reads the repository's users once per filter
 typed (after a pause), and each tick is one write. Committing suggestions reads each changed file and its
 directory's file modes once, then makes three writes (tree, commit, branch) and resolves each thread.
 

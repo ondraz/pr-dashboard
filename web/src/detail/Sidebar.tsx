@@ -1,29 +1,25 @@
-import { Link } from "@tanstack/react-router";
-import { type ReactNode, useState } from "react";
+import { Link, useMatchRoute, useNavigate } from "@tanstack/react-router";
+import { type ReactNode, useMemo, useState } from "react";
 import type { PrSession } from "../../../shared/sessions.ts";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useWriteAccess } from "../app/writeAccess.tsx";
-import {
-    loadAssignableUsers,
-    loadLabels,
-    type PickOption,
-    removeReviewRequest,
-    setAssignee,
-    setLabel,
-} from "../github/manage.ts";
-import { dismissReview, requestReview } from "../github/review.ts";
+import { loadAssignableUsers, type PickOption, removeReviewRequest } from "../github/manage.ts";
+import type { ReviewThread } from "../github/pullRequest.ts";
+import { dismissReview, requestReview, setThreadResolved } from "../github/review.ts";
 import { PrDraftIcon, PrOpenIcon, SparkIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
-import { labelColor } from "../logic/labels.ts";
-import { prRouteOf } from "../logic/prRoute.ts";
+import { CHECK_GROUP, type CheckEntry, groupChecks } from "../logic/checks.ts";
+import { commentExcerpt, conversationAnchor, openThreads, threadLines } from "../logic/conversation.ts";
+import { type PrRoute, prRouteOf } from "../logic/prRoute.ts";
 import { canDismiss, canReRequest, type Reviewer, type ReviewerState, reviewers } from "../logic/reviewers.ts";
 import { type SessionRole, sessionLink } from "../logic/sessionLinks.ts";
 import type { StackNode } from "../logic/stacks.ts";
 import { timeAgo } from "../logic/time.ts";
+import { prUnresolvedSummary } from "../logic/unresolved.ts";
 import { usePrListContext } from "./listContext.ts";
 import { Picker } from "./Picker.tsx";
 import { useOpenPr } from "./PrContext.tsx";
-import { usePullRequestStack } from "./usePullRequest.ts";
+import { usePullRequestChecks, usePullRequestStack } from "./usePullRequest.ts";
 import { usePrWrite } from "./useWrite.ts";
 
 function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
@@ -56,6 +52,206 @@ function useEditing(kind: string, allowed: boolean) {
 }
 
 const None = ({ text = "None" }: { text?: string }) => <p className="muted">{text}</p>;
+
+/**
+ * Shows a thread or review in the Conversation tab, going there first from another tab: opened,
+ * scrolled to the middle and focused, as a click in GitHub's or Codex's list of comments does.
+ */
+function useRevealInConversation(route: PrRoute) {
+    const navigate = useNavigate();
+    const matchRoute = useMatchRoute();
+    return (nodeId: string) => {
+        const show = () => {
+            const target = document.getElementById(conversationAnchor(nodeId));
+            if (!target) return false;
+            if (target instanceof HTMLDetailsElement) target.open = true;
+            target.scrollIntoView({ block: "center" });
+            target.querySelector<HTMLElement>(":scope > summary")?.focus({ preventScroll: true });
+            target.classList.remove("revealed");
+            void target.offsetWidth;
+            target.classList.add("revealed");
+            return true;
+        };
+        if (matchRoute({ to: "/$owner/$repo/pull/$number", params: route }) && show()) return;
+        void navigate({ to: "/$owner/$repo/pull/$number", params: route }).then(() => {
+            // The tab renders after the navigation settles; give it a few frames.
+            let tries = 0;
+            const retry = () => {
+                if (!show() && ++tries < 40) setTimeout(retry, 25);
+            };
+            retry();
+        });
+    };
+}
+
+/**
+ * The tick that resolves a thread from the list. A read-only sign-in sees it greyed out with the reason,
+ * so the action is there to be found; GitHub would refuse it anyway.
+ */
+function ResolveTick({ thread, where }: { thread: ReviewThread; where: string }) {
+    const { route } = useOpenPr();
+    const { canWrite, reason } = useWriteAccess(route);
+    const resolve = usePrWrite((client) => setThreadResolved(client, thread.id, true));
+    if (!thread.viewerCanResolve && canWrite) return null;
+    const title = canWrite
+        ? `Resolve the thread on ${where}`
+        : reason?.kind === "token"
+          ? "Sign in with the GitHub App to resolve threads; a token is read-only here"
+          : "GitHub refused changes in this repository";
+    return (
+        <>
+            <input
+                type="checkbox"
+                className="resolve-tick"
+                aria-label={`Resolve ${where}`}
+                title={title}
+                checked={resolve.isPending || resolve.isSuccess}
+                disabled={!canWrite || resolve.isPending || resolve.isSuccess}
+                onChange={() => resolve.mutate(undefined)}
+            />
+            {resolve.error && <p className="error-text resolve-error">{resolve.error.message}</p>}
+        </>
+    );
+}
+
+/** One open thread in the list: a tick to resolve it, and the rest of the row a jump to it. */
+function UnresolvedThread({ thread, onReveal }: { thread: ReviewThread; onReveal: () => void }) {
+    const comments = (thread.comments.nodes ?? []).filter((comment) => !!comment);
+    const first = comments[0];
+    const replies = thread.comments.totalCount - 1;
+    const where = `${thread.path.split("/").at(-1)}${threadLines(thread)}`;
+    return (
+        <li className="unresolved-row">
+            <ResolveTick thread={thread} where={where} />
+            <button type="button" className="unresolved-item" onClick={onReveal}>
+                <span className="unresolved-where">
+                    <code title={thread.path}>{where}</code>
+                    {thread.isOutdated && <span className="thread-tag">Outdated</span>}
+                </span>
+                <span className="unresolved-text">
+                    {first?.author?.avatarUrl && (
+                        <img className="avatar" src={first.author.avatarUrl} alt="" width={16} height={16} />
+                    )}
+                    <span className="who">{first?.author?.login ?? "ghost"}</span> {commentExcerpt(first?.body ?? "")}
+                </span>
+                {replies > 0 && (
+                    <span className="muted unresolved-replies">
+                        {replies} {replies === 1 ? "reply" : "replies"}
+                    </span>
+                )}
+            </button>
+        </li>
+    );
+}
+
+/** Every thread still open and Copilot's standing verdict, each a click away from where it sits. */
+function UnresolvedComments() {
+    const { route, detail } = useOpenPr();
+    const { pr, threads } = detail;
+    const open = useMemo(() => openThreads(threads), [threads]);
+    const verdict = useMemo(
+        () => prUnresolvedSummary(threads, pr.reviews?.nodes ?? []).copilotVerdict,
+        [threads, pr.reviews],
+    );
+    const reveal = useRevealInConversation(route);
+    const count = open.length + (verdict ? 1 : 0);
+    return (
+        <Section title="Unresolved comments" action={count ? <span className="tab-count">{count}</span> : undefined}>
+            {count ? (
+                <ul className="sidebar-list unresolved-list">
+                    {verdict && (
+                        <li>
+                            <button type="button" className="unresolved-item" onClick={() => reveal(verdict.id)}>
+                                <span className="unresolved-where">Copilot's review</span>
+                                <span className="unresolved-text">{verdict.label}</span>
+                            </button>
+                        </li>
+                    )}
+                    {open.map((thread) => (
+                        <UnresolvedThread key={thread.id} thread={thread} onReveal={() => reveal(thread.id)} />
+                    ))}
+                </ul>
+            ) : (
+                <None text="Nothing is unresolved" />
+            )}
+        </Section>
+    );
+}
+
+function CheckItem({ check }: { check: CheckEntry }) {
+    const { tone, mark } = CHECK_GROUP[check.group];
+    return (
+        <li className={`sidebar-check tone-${tone}`} title={`${check.name}: ${check.label}`}>
+            <span className="merge-mark" aria-hidden="true">
+                {mark}
+            </span>
+            <span className="sidebar-check-name">
+                {check.detailsUrl ? <External href={check.detailsUrl}>{check.name}</External> : check.name}
+            </span>
+            <span className="muted sidebar-check-state">{check.label}</span>
+        </li>
+    );
+}
+
+// Past this many, the checks that need nothing from anyone fold away under their count.
+const SHOWN_CHECKS = 8;
+
+/** The head commit's checks, failing and running ones first, each with where it stands. */
+function Checks() {
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
+    const { data, error } = usePullRequestChecks(route, pr.headRefOid);
+    const all = (
+        <Link to="/$owner/$repo/pull/$number/checks" params={route} className="link-btn sidebar-edit">
+            All checks
+        </Link>
+    );
+    let body: ReactNode;
+    if (error && !data) {
+        body = /not accessible/i.test(error.message) ? (
+            <p className="muted">
+                This sign-in cannot read checks. A token needs Checks and Commit statuses read access; the GitHub App
+                has both.
+            </p>
+        ) : (
+            <p className="error-text">The checks could not be read: {error.message}</p>
+        );
+    } else if (!data) body = <None text="Loading checks…" />;
+    else if (!data.checks.length) body = <None text={`No checks ran on ${pr.headRefOid.slice(0, 7)}`} />;
+    else {
+        const groups = groupChecks(data.checks);
+        const fold = data.checks.length > SHOWN_CHECKS;
+        const loud = groups.filter(({ group }) => !fold || group === "failing" || group === "pending");
+        const quiet = fold ? groups.filter(({ group }) => group === "successful" || group === "skipped") : [];
+        const quietCount = quiet.reduce((sum, { checks }) => sum + checks.length, 0);
+        body = (
+            <>
+                <p className="muted sidebar-check-counts">
+                    {groups.map(({ group, checks }) => `${checks.length} ${group}`).join(", ")}
+                </p>
+                <ul className="sidebar-list sidebar-checks">
+                    {loud.flatMap(({ checks }) => checks.map((check) => <CheckItem key={check.id} check={check} />))}
+                </ul>
+                {quietCount > 0 && (
+                    <details className="sidebar-checks-more">
+                        <summary>{quiet.map(({ group, checks }) => `${checks.length} ${group}`).join(", ")}</summary>
+                        <ul className="sidebar-list sidebar-checks">
+                            {quiet.flatMap(({ checks }) =>
+                                checks.map((check) => <CheckItem key={check.id} check={check} />),
+                            )}
+                        </ul>
+                    </details>
+                )}
+                {!data.complete && <p className="muted">More checks ran than were read.</p>}
+            </>
+        );
+    }
+    return (
+        <Section title="Checks" action={all}>
+            {body}
+        </Section>
+    );
+}
 
 const REVIEWER_STATE: Record<ReviewerState, { text: string; className: string }> = {
     REQUESTED: { text: "Awaiting review", className: "review-pending" },
@@ -203,89 +399,6 @@ function Reviewers() {
     );
 }
 
-function Assignees() {
-    const { route, detail } = useOpenPr();
-    const { pr } = detail;
-    const { canWrite } = useWriteAccess(route);
-    const assignees = (pr.assignees.nodes ?? []).filter((user) => !!user);
-    const { editing, close, button } = useEditing("assignees", canWrite && pr.viewerCanUpdate);
-    const toggle = usePrWrite((client, { option, on }: { option: PickOption; on: boolean }) =>
-        setAssignee(client, pr.id, option.id, on),
-    );
-    return (
-        <Section title="Assignees" action={button}>
-            {editing && (
-                <Picker
-                    kind="assignees"
-                    current={assignees.map((user) => ({ id: user.id, name: user.login, avatarUrl: user.avatarUrl }))}
-                    load={(client, query) => loadAssignableUsers(client, route, query)}
-                    busy={toggle.isPending}
-                    onToggle={(option, on) => toggle.mutate({ option, on })}
-                    onClose={close}
-                />
-            )}
-            {toggle.error && <p className="error-text">{toggle.error.message}</p>}
-            {assignees.length ? (
-                <ul className="sidebar-list">
-                    {assignees.map((user) => (
-                        <li key={user.login}>
-                            <span className="who">
-                                {user.avatarUrl && (
-                                    <img className="avatar" src={user.avatarUrl} alt="" width={20} height={20} />
-                                )}
-                                <External href={user.url}>{user.login}</External>
-                            </span>
-                        </li>
-                    ))}
-                </ul>
-            ) : (
-                <None text="No one assigned" />
-            )}
-        </Section>
-    );
-}
-
-function Labels() {
-    const { route, detail } = useOpenPr();
-    const { pr } = detail;
-    const { canWrite } = useWriteAccess(route);
-    const labels = (pr.labels?.nodes ?? []).filter((label) => !!label);
-    const { editing, close, button } = useEditing("labels", canWrite && pr.viewerCanUpdate);
-    const toggle = usePrWrite((client, { option, on }: { option: PickOption; on: boolean }) =>
-        setLabel(client, pr.id, option.id, on),
-    );
-    return (
-        <Section title="Labels" action={button}>
-            {editing && (
-                <Picker
-                    kind="labels"
-                    current={labels.map((label) => ({ id: label.id, name: label.name, avatarUrl: null }))}
-                    load={(client, query) => loadLabels(client, route, query)}
-                    busy={toggle.isPending}
-                    onToggle={(option, on) => toggle.mutate({ option, on })}
-                    onClose={close}
-                />
-            )}
-            {toggle.error && <p className="error-text">{toggle.error.message}</p>}
-            {labels.length ? (
-                <div className="pr-labels sidebar-labels">
-                    {labels.map((label) => (
-                        <span
-                            key={label.name}
-                            className="pr-label"
-                            style={{ background: labelColor(label.name), color: "var(--color-btn-text)" }}
-                        >
-                            {label.name}
-                        </span>
-                    ))}
-                </div>
-            ) : (
-                <None />
-            )}
-        </Section>
-    );
-}
-
 function LinkedIssues() {
     const { pr } = useOpenPr().detail;
     const repo = pr.url.split("/").slice(3, 5).join("/");
@@ -307,15 +420,6 @@ function LinkedIssues() {
             ) : (
                 <None text="None that this PR closes" />
             )}
-        </Section>
-    );
-}
-
-function Milestone() {
-    const { milestone } = useOpenPr().detail.pr;
-    return (
-        <Section title="Milestone">
-            {milestone ? <External href={milestone.url}>{milestone.title}</External> : <None text="No milestone" />}
         </Section>
     );
 }
@@ -419,11 +523,10 @@ function Sessions() {
 export function Sidebar() {
     return (
         <aside className="pr-sidebar">
+            <UnresolvedComments />
+            <Checks />
             <Reviewers />
-            <Assignees />
-            <Labels />
             <LinkedIssues />
-            <Milestone />
             <Stack />
             <Sessions />
         </aside>

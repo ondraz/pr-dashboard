@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { reviewThread, timeline } from "../github/prFixtures.ts";
-import { buildConversation, hunkTail, unresolvedOnly } from "./conversation.ts";
+import { pullCommit, reviewThread, timeline } from "../github/prFixtures.ts";
+import {
+    buildConversation,
+    commentExcerpt,
+    hunkTail,
+    openThreads,
+    threadLines,
+    unresolvedOnly,
+    withCommits,
+} from "./conversation.ts";
 
 describe("buildConversation", () => {
     it("keeps the timeline order and folds commits pushed in a row into one entry", () => {
@@ -112,5 +120,63 @@ describe("hunkTail", () => {
             { text: " e", kind: "context" },
         ]);
         expect(hunkTail("@@ -1 +1 @@\n-b")).toEqual([{ text: "-b", kind: "del" }]);
+    });
+});
+
+describe("withCommits", () => {
+    const at = (oid: string, headline: string, committedDate: string) => ({
+        ...pullCommit(oid, headline),
+        committedDate,
+    });
+
+    it("places the commits the timeline lacks among its entries by commit date, in a row where they meet", () => {
+        const merged = withCommits(
+            [
+                timeline.reviewRequested("RR_1", "bob"), // 2026-11-25T08:00
+                timeline.comment("IC_1", "bob", "<p>Nice.</p>"), // 2026-11-25T10:00
+            ],
+            [
+                at("ccccccc3", "Fix the axle", "2026-11-26T09:00:00Z"),
+                at("aaaaaaa1", "Cut the teeth", "2026-11-24T09:00:00Z"),
+                at("bbbbbbb2", "Oil the axle", "2026-11-25T09:00:00Z"),
+            ],
+        );
+        expect(
+            merged.map((node) =>
+                node.__typename === "PullRequestCommit" ? node.commit.oid : "id" in node ? node.id : node.__typename,
+            ),
+        ).toEqual(["aaaaaaa1", "RR_1", "bbbbbbb2", "IC_1", "ccccccc3"]);
+        const kinds = buildConversation(merged, []).map((item) => item.kind);
+        expect(kinds).toEqual(["commits", "event", "commits", "comment", "commits"]);
+    });
+
+    it("leaves out commits the timeline already shows", () => {
+        const shown = timeline.commit("aaaaaaa1", "Cut the teeth");
+        const merged = withCommits([shown], [pullCommit("aaaaaaa1", "Cut the teeth")]);
+        expect(merged).toEqual([shown]);
+    });
+});
+
+describe("the side panel's unresolved list", () => {
+    it("keeps threads that are neither resolved nor in the viewer's unsent review", () => {
+        const open = reviewThread("T_1", "PRR_1", [{ login: "bob", bodyHTML: "<p>Why?</p>" }]);
+        const resolved = reviewThread("T_2", "PRR_1", [{ login: "bob", bodyHTML: "<p>Ok.</p>" }], { isResolved: true });
+        const pending = reviewThread("T_3", "PRR_2", [{ login: "alice", bodyHTML: "<p>Draft.</p>", pending: true }]);
+        expect(openThreads([open, resolved, pending]).map((thread) => thread.id)).toEqual(["T_1"]);
+    });
+
+    it("names the lines a thread is on, and nothing for a comment on the whole file", () => {
+        const thread = reviewThread("T_1", "PRR_1", [{ login: "bob", bodyHTML: "<p>Why?</p>" }]);
+        expect(threadLines({ ...thread, startLine: 10, line: 12 })).toBe(":10-12");
+        expect(threadLines({ ...thread, startLine: null, line: null, originalLine: 7 })).toBe(":7");
+        expect(threadLines({ ...thread, subjectType: "FILE" })).toBe("");
+    });
+
+    it("shortens a comment to one plain line", () => {
+        expect(commentExcerpt("**Why** `3`?\n\n```ts\nconst b = 3;\n```\nIt <b>meshes</b>.")).toBe("Why 3? It meshes.");
+        expect(commentExcerpt("a".repeat(200), 10)).toBe(`${"a".repeat(9)}…`);
+        expect(commentExcerpt("> Pass `chart_file_store` to _build_deps in agent_cli.py, _please_.")).toBe(
+            "Pass chart_file_store to build_deps in agent_cli.py, please.",
+        );
     });
 });

@@ -115,6 +115,14 @@ export function normalizeCheck(node: CheckNode): CheckEntry | null {
     return null;
 }
 
+/** How each group of checks is headed and marked, in the Checks tab and the side panel. */
+export const CHECK_GROUP = {
+    failing: { heading: "Failing", tone: "fail", mark: "✕" },
+    pending: { heading: "In progress", tone: "pending", mark: "●" },
+    successful: { heading: "Successful", tone: "ok", mark: "✓" },
+    skipped: { heading: "Skipped", tone: "neutral", mark: "–" },
+} as const satisfies Record<CheckGroup, unknown>;
+
 export const GROUP_ORDER: readonly CheckGroup[] = ["failing", "pending", "successful", "skipped"];
 
 /** The checks by where they stand, failing first as GitHub lists them, each group by name. */
