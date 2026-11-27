@@ -305,7 +305,7 @@ export function ConversationTab() {
                     </button>
                 </fieldset>
             </div>
-            <NewSince items={items} />
+            <NewSince items={visible} />
             {visible.map((item) => (
                 <Item key={itemKey(item)} item={item} route={route} />
             ))}
