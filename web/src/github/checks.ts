@@ -1,6 +1,6 @@
 import { type CheckEntry, normalizeCheck } from "../logic/checks.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
-import { type GitHubClient, graphql } from "./client.ts";
+import { type GitHubClient, GraphqlError, graphql } from "./client.ts";
 import { graphql as gql } from "./gql/index.ts";
 
 /**
@@ -93,17 +93,24 @@ export interface CommitChecks {
     /** The rollup's state, or null when the commit has no checks at all. */
     state: string | null;
     checks: CheckEntry[];
-    /** False when the commit has more checks than the pages read. */
+    /** False when the commit has more checks than the pages read, or some of them could not be read. */
     complete: boolean;
 }
 
-/** Every check run and status on `oid`, the commit at the head of the PR `route`. */
+/**
+ * Every check run and status on `oid`, the commit at the head of the PR `route`. A sign-in that may not
+ * read checks gets errors and no rollup, which is not the same as a commit without checks.
+ */
 export async function loadCommitChecks(client: GitHubClient, route: PrRoute, oid: string): Promise<CommitChecks> {
     const variables = { owner: route.owner, name: route.repo, oid, number: route.number };
+    let partial = false;
     const read = async (after: string | null) => {
-        const { data } = await graphql(client, commitChecksQuery, { ...variables, after });
+        const { data, errors } = await graphql(client, commitChecksQuery, { ...variables, after });
         const commit = data.repository?.object;
-        return commit && "statusCheckRollup" in commit ? commit.statusCheckRollup : null;
+        const rollup = commit && "statusCheckRollup" in commit ? commit.statusCheckRollup : null;
+        if (errors.length && !rollup) throw new GraphqlError(errors);
+        if (errors.length) partial = true;
+        return rollup;
     };
     const checks: CheckEntry[] = [];
     let rollup = await read(null);
@@ -118,5 +125,5 @@ export async function loadCommitChecks(client: GitHubClient, route: PrRoute, oid
         if (page === PAGE_CAP) return { oid, state, checks, complete: false };
         rollup = await read(endCursor);
     }
-    return { oid, state, checks, complete: true };
+    return { oid, state, checks, complete: !partial };
 }
