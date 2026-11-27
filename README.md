@@ -63,9 +63,10 @@ one in the list as its tab, filters and grouping currently show it.
   with the threads they started (diff excerpt, every reply, resolved and outdated ones marked and
   resolved ones folded), commits, force-pushes, review requests, label, title and base changes,
   draft state, closing and merging. Bodies are the HTML GitHub rendered from the Markdown, run
-  through DOMPurify once more before they reach the page. At the bottom, the merge box: the review decision, the checks on the head commit counted by
-  outcome, whether the branch merges cleanly (conflicts, out of date, blocked by the base branch's
-  rules, still being worked out), and auto-merge or the PR's place in the merge queue
+  through DOMPurify once more before they reach the page. At the bottom, the merge box: the review
+  decision, the checks on the head commit counted by outcome, whether the branch merges cleanly
+  (conflicts, out of date, blocked by the base branch's rules, still being worked out), and
+  auto-merge or the PR's place in the merge queue
 - **Commits**: the PR's commits, by day
 - **Checks** and **Files changed** open on GitHub for now, as does a single commit's diff
 - The sidebar: reviewers and where each one's review stands, assignees, labels, the issues the PR
