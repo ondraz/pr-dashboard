@@ -12,6 +12,7 @@ import { External } from "../list/PrRows.tsx";
 import { checkGroup } from "../logic/mergeBox.ts";
 import { githubPrUrl, type PrRoute } from "../logic/prRoute.ts";
 import { timeAgo } from "../logic/time.ts";
+import { AgentButtons, AgentPanel, type AgentTask } from "./AgentPanel.tsx";
 import { PrContext } from "./PrContext.tsx";
 import { PrHeader } from "./PrHeader.tsx";
 import { PrSteps } from "./PrSteps.tsx";
@@ -102,6 +103,7 @@ export function PrPage() {
     const { data, error, isFetching } = query;
     const { canWrite, reason } = useWriteAccess(route);
     const [reviewing, setReviewing] = useState(false);
+    const [agent, setAgent] = useState<AgentTask | null>(null);
     usePullRequestLiveCheck(route, data, isFetching);
     const open = useMemo(() => (data ? { route, detail: data } : null), [route, data]);
     // The diff takes the whole width, as on GitHub.
@@ -148,15 +150,24 @@ export function PrPage() {
                     route={route}
                     detail={open.detail}
                     actions={
-                        canWrite && reviewable ? (
-                            <ReviewButton open={reviewing} onToggle={() => setReviewing(!reviewing)} />
-                        ) : reason?.kind === "token" ? (
-                            <span className="muted read-only-note" title="Sign in with the GitHub App to review here">
-                                Read-only token
-                            </span>
-                        ) : null
+                        <>
+                            {open.detail.pr.state === "OPEN" && <AgentButtons open={agent} onOpen={setAgent} />}
+                            {canWrite && reviewable ? (
+                                <ReviewButton open={reviewing} onToggle={() => setReviewing(!reviewing)} />
+                            ) : reason?.kind === "token" ? (
+                                <span
+                                    className="muted read-only-note"
+                                    title="Sign in with the GitHub App to review here"
+                                >
+                                    Read-only token
+                                </span>
+                            ) : null}
+                        </>
                     }
                 />
+                {agent && open.detail.pr.state === "OPEN" && (
+                    <AgentPanel key={agent} task={agent} onClose={() => setAgent(null)} />
+                )}
                 {reviewing && canWrite && <ReviewPanel onDone={() => setReviewing(false)} />}
                 <SuggestionBatch />
                 {wide ? (

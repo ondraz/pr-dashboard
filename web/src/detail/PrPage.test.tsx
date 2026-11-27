@@ -578,6 +578,78 @@ describe("PR page", () => {
         expect(screen.queryByText("No checks ran on tip-sha.")).toBeNull();
     });
 
+    describe("with Claude", () => {
+        let writeText: ReturnType<typeof vi.fn>;
+        // The links open other apps, which jsdom cannot.
+        const stayOnPage = (event: Event) => event.preventDefault();
+        beforeEach(() => {
+            writeText = vi.fn(async (_text: string) => {});
+            Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+            document.addEventListener("click", stayOnPage);
+        });
+        afterEach(() => document.removeEventListener("click", stayOnPage));
+
+        it("builds a fix from the failing checks and open threads, and hands it to the session that made the PR", async () => {
+            open("/acme/widgets/pull/12");
+            await heading();
+            fireEvent.click(screen.getByRole("button", { name: "Fix with Claude" }));
+            const panel = screen.getByRole("region", { name: "Fix with Claude" });
+            const prompt = (await within(panel).findByRole("textbox", { name: "Prompt" })) as HTMLTextAreaElement;
+            await waitFor(() => expect(prompt.value).toContain("bob: Why 3?"));
+            expect(prompt.value).toContain('Fix pull request acme/widgets#12, "Turn the gears"');
+            expect(prompt.value).toContain("- CI / test (failure): 1 test failed");
+            expect(prompt.value).toContain("  - src/gears.ts:12: Expected 3 to be 4");
+            // The resolved thread is done with.
+            expect(prompt.value).not.toContain("Typo.");
+            expect(within(panel).getByText("1 failing check and 1 unresolved thread go into the prompt.")).toBeTruthy();
+
+            const [latest, older] = within(panel).getAllByRole("link", { name: /Copy and open in Claude/ });
+            expect(latest?.getAttribute("href")).toBe(`claude://claude.ai/epitaxy/${madeSession.id}`);
+            expect(older?.closest("li")?.className).toBe("archived");
+            fireEvent.click(latest as HTMLElement);
+            expect(writeText).toHaveBeenCalledWith(prompt.value);
+            expect(await within(panel).findByText("Prompt copied")).toBeTruthy();
+
+            const fresh =
+                within(panel)
+                    .getByRole("link", { name: /New session in Claude/ })
+                    .getAttribute("href") ?? "";
+            expect(fresh.startsWith("claude://code/new?q=")).toBe(true);
+            expect(decodeURIComponent(fresh.slice("claude://code/new?q=".length))).toBe(prompt.value);
+
+            fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
+            expect(screen.queryByRole("region", { name: "Fix with Claude" })).toBeNull();
+        });
+
+        it("asks the session that reviewed the PR for another review, with the prompt in its link", async () => {
+            open("/acme/widgets/pull/12");
+            await heading();
+            fireEvent.click(screen.getByRole("button", { name: "Review with Claude" }));
+            const panel = screen.getByRole("region", { name: "Review with Claude" });
+            const prompt = (await within(panel).findByRole("textbox", { name: "Prompt" })) as HTMLTextAreaElement;
+            expect(prompt.value.startsWith('Review pull request acme/widgets#12, "Turn the gears"')).toBe(true);
+            const link = within(panel).getByRole("link", { name: /Open in VS Code/ });
+            expect(link.getAttribute("href")).toBe(
+                `vscode://anthropic.claude-code/open?session=${reviewSession.id}&prompt=${encodeURIComponent(prompt.value)}`,
+            );
+            expect(within(panel).getByText("Review the gears")).toBeTruthy();
+        });
+
+        it("offers only a new session when no session made the PR, and says when the copy failed", async () => {
+            writeText.mockRejectedValue(new Error("denied"));
+            open("/acme/widgets/pull/12", {
+                fetchSessions: async () => ({ made: new Map(), reviewed: new Map() }),
+            });
+            await heading();
+            fireEvent.click(screen.getByRole("button", { name: "Fix with Claude" }));
+            const panel = screen.getByRole("region", { name: "Fix with Claude" });
+            await within(panel).findByRole("textbox", { name: "Prompt" });
+            expect(within(panel).getByText("No Claude session made this PR that this computer knows of.")).toBeTruthy();
+            fireEvent.click(within(panel).getByRole("button", { name: "Copy prompt" }));
+            expect(await within(panel).findByText("Could not copy; select the prompt and copy it.")).toBeTruthy();
+        });
+    });
+
     it("answers a path that is not a PR with a way back to the list", async () => {
         open("/acme/widgets/pull/twelve");
         expect(await screen.findByRole("link", { name: "Back to the list" })).toBeTruthy();

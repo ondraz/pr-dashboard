@@ -30,3 +30,42 @@ export function sessionLink(session: PrSession | null | undefined, role: Session
         archived: session.archived,
     };
 }
+
+/** A link that hands Claude a prompt; `carriesPrompt` is false where the prompt has to be pasted. */
+export interface PromptLink {
+    href: string;
+    app: SessionLink["app"];
+    carriesPrompt: boolean;
+}
+
+// The desktop app cuts a longer prompt short, and a URL this long is already unwieldy to hand to the OS.
+export const LINK_PROMPT_LIMIT = 8000;
+
+const fits = (prompt: string) => prompt.length > 0 && prompt.length <= LINK_PROMPT_LIMIT;
+
+/**
+ * Opens `session` for `prompt`. VS Code's link takes the prompt and puts it in the session's box; the
+ * desktop app's link to a session takes none, so there it has to be pasted.
+ */
+export function resumeLink(
+    session: PrSession,
+    role: SessionRole,
+    prompt: string,
+): (SessionLink & { carriesPrompt: boolean }) | null {
+    const link = sessionLink(session, role);
+    if (!link) return null;
+    if (link.app === "VS Code" && fits(prompt)) {
+        return { ...link, href: `${link.href}&prompt=${encodeURIComponent(prompt)}`, carriesPrompt: true };
+    }
+    return { ...link, carriesPrompt: false };
+}
+
+/** Starts a new Claude Code session with `prompt`, in the desktop app or in VS Code. */
+export function newSessionLinks(prompt: string): PromptLink[] {
+    const carriesPrompt = fits(prompt);
+    const query = (name: string) => (carriesPrompt ? `?${name}=${encodeURIComponent(prompt)}` : "");
+    return [
+        { app: "Claude", href: `claude://code/new${query("q")}`, carriesPrompt },
+        { app: "VS Code", href: `vscode://anthropic.claude-code/open${query("prompt")}`, carriesPrompt },
+    ];
+}

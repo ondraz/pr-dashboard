@@ -3,7 +3,7 @@ import type { PrSession } from "../../../shared/sessions.ts";
 import { ChangeFingerprint, type ProbeData, type PrProbe, prFingerprint } from "./fingerprint.ts";
 import { labelColor } from "./labels.ts";
 import { RefreshProgress } from "./progress.ts";
-import { sessionLink } from "./sessionLinks.ts";
+import { LINK_PROMPT_LIMIT, newSessionLinks, resumeLink, sessionLink } from "./sessionLinks.ts";
 import { tabSearches } from "./tabs.ts";
 import { timeAgo } from "./time.ts";
 
@@ -64,6 +64,44 @@ describe("sessionLink", () => {
         expect(sessionLink({ ...desktop, id: "local_x;y" }, "made")).toBeNull();
         expect(sessionLink({ ...desktop, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }, "made")).toBeNull();
         expect(sessionLink(undefined, "made")).toBeNull();
+    });
+});
+
+describe("prompt links", () => {
+    const desktop: PrSession = {
+        id: "local_11111111-1111-4111-8111-111111111111",
+        title: "",
+        archived: false,
+        lastActivityAt: 0,
+    };
+    const cli: PrSession = { ...desktop, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "cli" };
+
+    it("hands VS Code's session the prompt in its link, and leaves the desktop app's to the clipboard", () => {
+        expect(resumeLink(cli, "made", "Fix #12 & push")).toMatchObject({
+            href: "vscode://anthropic.claude-code/open?session=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&prompt=Fix%20%2312%20%26%20push",
+            carriesPrompt: true,
+        });
+        expect(resumeLink(desktop, "made", "Fix #12")).toMatchObject({
+            href: "claude://claude.ai/epitaxy/local_11111111-1111-4111-8111-111111111111",
+            carriesPrompt: false,
+        });
+        expect(resumeLink({ ...desktop, id: "local_x;y" }, "made", "Fix")).toBeNull();
+    });
+
+    it("starts a new session with the prompt in either app", () => {
+        expect(newSessionLinks("Fix #12")).toEqual([
+            { app: "Claude", href: "claude://code/new?q=Fix%20%2312", carriesPrompt: true },
+            { app: "VS Code", href: "vscode://anthropic.claude-code/open?prompt=Fix%20%2312", carriesPrompt: true },
+        ]);
+    });
+
+    it("leaves a prompt too long for a link to be pasted", () => {
+        const long = "x".repeat(LINK_PROMPT_LIMIT + 1);
+        expect(newSessionLinks(long).map((link) => [link.href, link.carriesPrompt])).toEqual([
+            ["claude://code/new", false],
+            ["vscode://anthropic.claude-code/open", false],
+        ]);
+        expect(resumeLink(cli, "reviewed", long)?.carriesPrompt).toBe(false);
     });
 });
 
