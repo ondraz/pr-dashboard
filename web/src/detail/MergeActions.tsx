@@ -151,16 +151,19 @@ export function MergeActions() {
     const managed: ManagedPr = { pullRequestId: pr.id, headOid: pr.headRefOid };
     const [picked, setPicked] = useState<MergeMethod | null>(null);
     const method = picked && actions.methods.includes(picked) ? picked : (actions.methods[0] ?? null);
-    const [confirming, setConfirming] = useState(false);
+    // The head the viewer saw when they asked to land the PR; a push after that makes GitHub refuse the merge.
+    const [confirming, setConfirming] = useState<string | null>(null);
     const [updateMethod, setUpdateMethod] = useState<"MERGE" | "REBASE">("MERGE");
 
-    const landing = usePrWrite((client, args: Landing) => land(client, managed, args));
+    const landing = usePrWrite((client, args: Landing & { headOid: string }) =>
+        land(client, { pullRequestId: pr.id, headOid: args.headOid }, args),
+    );
     const cancel = usePrWrite((client) =>
         actions.cancel === "dequeue" ? removeFromMergeQueue(client, pr.id) : disableAutoMerge(client, pr.id),
     );
     const update = usePrWrite((client, how: "MERGE" | "REBASE") => updateBranch(client, managed, how));
     const draft = usePrWrite((client, toDraft: boolean) => setDraft(client, pr.id, toDraft));
-    const error = cancel.error ?? update.error ?? draft.error ?? (confirming ? null : landing.error);
+    const error = cancel.error ?? update.error ?? draft.error ?? (confirming !== null ? null : landing.error);
 
     const { land: action } = actions;
     if (!action && !actions.cancel && !actions.updateBranch && !actions.readyForReview && !actions.convertToDraft) {
@@ -168,15 +171,18 @@ export function MergeActions() {
     }
     return (
         <div className="merge-actions">
-            {confirming && action ? (
+            {confirming !== null && action ? (
                 <ConfirmLanding
                     action={action}
                     method={method}
                     busy={landing.isPending}
                     error={landing.error}
-                    onCancel={() => setConfirming(false)}
+                    onCancel={() => setConfirming(null)}
                     onConfirm={(message) =>
-                        landing.mutate({ land: action, method, message }, { onSuccess: () => setConfirming(false) })
+                        landing.mutate(
+                            { land: action, method, message, headOid: confirming },
+                            { onSuccess: () => setConfirming(null) },
+                        )
                     }
                 />
             ) : (
@@ -206,7 +212,7 @@ export function MergeActions() {
                                     ))}
                                 </select>
                             )}
-                            <button type="button" className="primary-btn" onClick={() => setConfirming(true)}>
+                            <button type="button" className="primary-btn" onClick={() => setConfirming(pr.headRefOid)}>
                                 {landLabel(action, method)}
                             </button>
                         </span>
