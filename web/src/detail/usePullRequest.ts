@@ -5,6 +5,7 @@ import { useLiveTicks } from "../app/useLiveTicks.ts";
 import {
     loadPullRequest,
     loadPullRequestCommits,
+    loadViewedFiles,
     type PullRequestDetail,
     readPullRequestFingerprint,
 } from "../github/pullRequest.ts";
@@ -50,6 +51,19 @@ export function usePullRequestCommits(route: PrRoute) {
         queryFn: () => {
             if (!github) throw new Error("Not signed in");
             return loadPullRequestCommits(github.client, route);
+        },
+        ...useRefreshOptions(),
+    });
+}
+
+export function useViewedFiles(route: PrRoute) {
+    const { github } = useDashboardState();
+    return useQuery({
+        queryKey: [...prQueryKey(github?.id, route), "viewed"],
+        enabled: !!github,
+        queryFn: () => {
+            if (!github) throw new Error("Not signed in");
+            return loadViewedFiles(github.client, route);
         },
         ...useRefreshOptions(),
     });

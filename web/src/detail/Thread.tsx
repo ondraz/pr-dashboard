@@ -2,7 +2,8 @@ import type { ReviewThread } from "../github/pullRequest.ts";
 import { External } from "../list/PrRows.tsx";
 import { hunkTail, isPendingThread } from "../logic/conversation.ts";
 import { timeAgo } from "../logic/time.ts";
-import { Markdown } from "./Markdown.tsx";
+import { CommentBody } from "./CommentBody.tsx";
+import { ThreadActions } from "./ThreadActions.tsx";
 
 interface Actor {
     login: string;
@@ -66,9 +67,10 @@ export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDif
                             <span className="thread-tag pending">Pending</span>
                         )}
                     </div>
-                    <Markdown html={comment.bodyHTML} />
+                    <CommentBody kind="review-comment" comment={comment} />
                 </div>
             ))}
+            <ThreadActions thread={thread} />
         </details>
     );
 }

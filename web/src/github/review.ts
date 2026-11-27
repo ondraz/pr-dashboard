@@ -1,6 +1,7 @@
 import type { PrRoute } from "../logic/prRoute.ts";
 import type { CommentTarget, ReviewEvent } from "../logic/review.ts";
 import { type GitHubClient, mutate, writeError } from "./client.ts";
+import type { ReactionContent } from "./gql/graphql.ts";
 import { graphql } from "./gql/index.ts";
 
 export const addPendingReviewMutation = graphql(`
@@ -204,4 +205,207 @@ export async function renderMarkdown(client: GitHubClient, route: PrRoute, text:
         context: `${route.owner}/${route.repo}`,
     });
     return typeof data === "string" ? data : String(data);
+}
+
+export const addThreadReplyMutation = graphql(`
+    mutation AddThreadReply($threadId: ID!, $body: String!, $pullRequestReviewId: ID) {
+        addPullRequestReviewThreadReply(
+            input: { pullRequestReviewThreadId: $threadId, body: $body, pullRequestReviewId: $pullRequestReviewId }
+        ) {
+            comment {
+                id
+            }
+        }
+    }
+`);
+
+export const resolveThreadMutation = graphql(`
+    mutation ResolveThread($threadId: ID!) {
+        resolveReviewThread(input: { threadId: $threadId }) {
+            thread {
+                id
+            }
+        }
+    }
+`);
+
+export const unresolveThreadMutation = graphql(`
+    mutation UnresolveThread($threadId: ID!) {
+        unresolveReviewThread(input: { threadId: $threadId }) {
+            thread {
+                id
+            }
+        }
+    }
+`);
+
+export const updateReviewCommentMutation = graphql(`
+    mutation UpdateReviewComment($id: ID!, $body: String!) {
+        updatePullRequestReviewComment(input: { pullRequestReviewCommentId: $id, body: $body }) {
+            pullRequestReviewComment {
+                id
+            }
+        }
+    }
+`);
+
+export const deleteReviewCommentMutation = graphql(`
+    mutation DeleteReviewComment($id: ID!) {
+        deletePullRequestReviewComment(input: { id: $id }) {
+            pullRequestReview {
+                id
+            }
+        }
+    }
+`);
+
+export const updateIssueCommentMutation = graphql(`
+    mutation UpdateIssueComment($id: ID!, $body: String!) {
+        updateIssueComment(input: { id: $id, body: $body }) {
+            issueComment {
+                id
+            }
+        }
+    }
+`);
+
+export const deleteIssueCommentMutation = graphql(`
+    mutation DeleteIssueComment($id: ID!) {
+        deleteIssueComment(input: { id: $id }) {
+            clientMutationId
+        }
+    }
+`);
+
+export const updateReviewMutation = graphql(`
+    mutation UpdateReview($id: ID!, $body: String!) {
+        updatePullRequestReview(input: { pullRequestReviewId: $id, body: $body }) {
+            pullRequestReview {
+                id
+            }
+        }
+    }
+`);
+
+export const addReactionMutation = graphql(`
+    mutation AddReaction($subjectId: ID!, $content: ReactionContent!) {
+        addReaction(input: { subjectId: $subjectId, content: $content }) {
+            reaction {
+                content
+            }
+        }
+    }
+`);
+
+export const removeReactionMutation = graphql(`
+    mutation RemoveReaction($subjectId: ID!, $content: ReactionContent!) {
+        removeReaction(input: { subjectId: $subjectId, content: $content }) {
+            reaction {
+                content
+            }
+        }
+    }
+`);
+
+export const markFileViewedMutation = graphql(`
+    mutation MarkFileViewed($pullRequestId: ID!, $path: String!) {
+        markFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+            clientMutationId
+        }
+    }
+`);
+
+export const unmarkFileViewedMutation = graphql(`
+    mutation UnmarkFileViewed($pullRequestId: ID!, $path: String!) {
+        unmarkFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+            clientMutationId
+        }
+    }
+`);
+
+export const dismissReviewMutation = graphql(`
+    mutation DismissReview($id: ID!, $message: String!) {
+        dismissPullRequestReview(input: { pullRequestReviewId: $id, message: $message }) {
+            pullRequestReview {
+                id
+            }
+        }
+    }
+`);
+
+/**
+ * Replies in a thread: into the pending review, opening one when there is none, or on its own at once when
+ * the reader asks for that.
+ */
+export async function replyToThread(
+    client: GitHubClient,
+    subject: ReviewSubject,
+    threadId: string,
+    body: string,
+    { single }: { single: boolean },
+): Promise<void> {
+    const pullRequestReviewId = single ? null : await pendingReview(client, subject);
+    await mutate(client, addThreadReplyMutation, { threadId, body, pullRequestReviewId });
+}
+
+export async function setThreadResolved(client: GitHubClient, threadId: string, resolved: boolean): Promise<void> {
+    if (resolved) await mutate(client, resolveThreadMutation, { threadId });
+    else await mutate(client, unresolveThreadMutation, { threadId });
+}
+
+/** The kinds of comment the viewer can edit: one on the PR, one in a review thread, and a review's summary. */
+export type CommentKind = "issue" | "review-comment" | "review";
+
+export async function editComment(client: GitHubClient, kind: CommentKind, id: string, body: string): Promise<void> {
+    if (kind === "issue") await mutate(client, updateIssueCommentMutation, { id, body });
+    else if (kind === "review-comment") await mutate(client, updateReviewCommentMutation, { id, body });
+    else await mutate(client, updateReviewMutation, { id, body });
+}
+
+/** Deletes a comment; a review's summary cannot be deleted, only edited. */
+export async function deleteComment(
+    client: GitHubClient,
+    kind: Exclude<CommentKind, "review">,
+    id: string,
+): Promise<void> {
+    if (kind === "issue") await mutate(client, deleteIssueCommentMutation, { id });
+    else await mutate(client, deleteReviewCommentMutation, { id });
+}
+
+export async function setReaction(
+    client: GitHubClient,
+    subjectId: string,
+    content: ReactionContent,
+    on: boolean,
+): Promise<void> {
+    if (on) await mutate(client, addReactionMutation, { subjectId, content });
+    else await mutate(client, removeReactionMutation, { subjectId, content });
+}
+
+export async function setFileViewed(
+    client: GitHubClient,
+    pullRequestId: string,
+    path: string,
+    viewed: boolean,
+): Promise<void> {
+    if (viewed) await mutate(client, markFileViewedMutation, { pullRequestId, path });
+    else await mutate(client, unmarkFileViewedMutation, { pullRequestId, path });
+}
+
+export async function dismissReview(client: GitHubClient, reviewId: string, message: string): Promise<void> {
+    await mutate(client, dismissReviewMutation, { id: reviewId, message });
+}
+
+/** Asks a reviewer for another review, as the sidebar's re-request does on GitHub. */
+export async function requestReview(client: GitHubClient, route: PrRoute, login: string): Promise<void> {
+    try {
+        await client.request("POST /repos/{owner}/{repo}/pulls/{pull_number}/requested_reviewers", {
+            owner: route.owner,
+            repo: route.repo,
+            pull_number: route.number,
+            reviewers: [login],
+        });
+    } catch (error) {
+        throw writeError(error);
+    }
 }

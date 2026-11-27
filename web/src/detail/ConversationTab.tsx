@@ -13,19 +13,19 @@ import {
 } from "../logic/conversation.ts";
 import { labelColor } from "../logic/labels.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
+import { CommentBody } from "./CommentBody.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MergeBox } from "./MergeBox.tsx";
 import { PrComment } from "./PrComment.tsx";
 import { useOpenPr } from "./PrContext.tsx";
+import { Reactions } from "./Reactions.tsx";
 import { Thread, When, Who } from "./Thread.tsx";
 
-function Card({ header, html, empty = "" }: { header: ReactNode; html: string; empty?: string }) {
+function Card({ header, children }: { header: ReactNode; children: ReactNode }) {
     return (
         <div className="timeline-card">
             <div className="timeline-card-header">{header}</div>
-            <div className="timeline-card-body">
-                {html.trim() ? <Markdown html={html} /> : <p className="muted">{empty}</p>}
-            </div>
+            <div className="timeline-card-body">{children}</div>
         </div>
     );
 }
@@ -47,7 +47,7 @@ function Review({ review, threads }: { review: ReviewNode; threads: ReviewThread
             {review.bodyHTML.trim() && (
                 <div className="timeline-card">
                     <div className="timeline-card-body">
-                        <Markdown html={review.bodyHTML} />
+                        <CommentBody kind="review" comment={review} />
                     </div>
                 </div>
             )}
@@ -169,8 +169,9 @@ function Item({ item, route }: { item: ConversationItem; route: PrRoute }) {
                             <When at={item.comment.createdAt} href={item.comment.url} />
                         </>
                     }
-                    html={item.comment.bodyHTML}
-                />
+                >
+                    <CommentBody kind="issue" comment={item.comment} />
+                </Card>
             );
         case "review":
             return <Review review={item.review} threads={item.threads} />;
@@ -223,9 +224,14 @@ export function ConversationTab() {
                         <Who actor={pr.author} /> opened this <When at={pr.createdAt} />
                     </>
                 }
-                html={pr.bodyHTML}
-                empty="No description provided."
-            />
+            >
+                {pr.bodyHTML.trim() ? (
+                    <Markdown html={pr.bodyHTML} />
+                ) : (
+                    <p className="muted">No description provided.</p>
+                )}
+                <Reactions subjectId={pr.id} groups={pr.reactionGroups} canReact={pr.viewerCanReact} />
+            </Card>
             {items.map((item) => (
                 <Item key={itemKey(item)} item={item} route={route} />
             ))}

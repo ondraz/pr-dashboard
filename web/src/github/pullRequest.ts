@@ -2,6 +2,7 @@ import { prFingerprint } from "../logic/fingerprint.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { type GitHubClient, graphql } from "./client.ts";
 import type {
+    FileViewedState,
     PullCommitFieldsFragment,
     PullRequestDetailQuery,
     ReviewThreadDetailPageFragment,
@@ -11,6 +12,7 @@ import {
     pullRequestCommitsQuery,
     pullRequestDetailQuery,
     pullRequestProbeQuery,
+    pullRequestViewedFilesQuery,
     reviewThreadDetailPageQuery,
     timelinePageQuery,
 } from "./pullRequestDocuments.ts";
@@ -117,4 +119,17 @@ export async function readPullRequestFingerprint(client: GitHubClient, route: Pr
     const pr = data.repository?.pullRequest;
     if (!pr) throw new PullRequestNotFound(route);
     return prFingerprint(pr);
+}
+
+/** The viewer's viewed state of each changed file; past the pages read, a file counts as not viewed. */
+export async function loadViewedFiles(client: GitHubClient, route: PrRoute): Promise<Map<string, FileViewedState>> {
+    const variables = variablesOf(route);
+    const read = async (after: string | null) => {
+        const { data } = await graphql(client, pullRequestViewedFilesQuery, { ...variables, after });
+        return data.repository?.pullRequest?.files;
+    };
+    const first = await read(null);
+    if (!first) throw new PullRequestNotFound(route);
+    const { nodes } = await collectPages(first, read);
+    return new Map(nodes.map((file) => [file.path, file.viewerViewedState]));
 }
