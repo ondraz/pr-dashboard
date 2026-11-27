@@ -87,27 +87,25 @@ function SessionTargets({
     prompt: string;
     onOpen: () => void;
 }) {
-    const links = sessions
-        .slice(0, SESSIONS_SHOWN)
-        .map((session) => ({ session, link: resumeLink(session, TASK[task].role, prompt) }))
-        .filter((target) => target.link !== null);
+    const links = sessions.slice(0, SESSIONS_SHOWN).flatMap((session) => {
+        const link = resumeLink(session, TASK[task].role, prompt);
+        return link ? [{ session, link }] : [];
+    });
     if (!links.length) return <p className="muted">No Claude session {TASK[task].who} that this computer knows of.</p>;
     return (
         <ul className="agent-sessions">
-            {links.map(({ session, link }) =>
-                link ? (
-                    <li key={session.id} className={link.archived ? "archived" : undefined}>
-                        <PromptAnchor
-                            link={link}
-                            label={`${link.carriesPrompt ? "Open" : "Copy and open"} in ${link.app}`}
-                            title={link.title}
-                            onOpen={onOpen}
-                        />
-                        <span className="session-title">{session.title || "Untitled session"}</span>
-                        {session.archived && <span className="session-meta">archived</span>}
-                    </li>
-                ) : null,
-            )}
+            {links.map(({ session, link }) => (
+                <li key={session.id} className={link.archived ? "archived" : undefined}>
+                    <PromptAnchor
+                        link={link}
+                        label={`${link.carriesPrompt ? "Open" : "Copy and open"} in ${link.app}`}
+                        title={link.title}
+                        onOpen={onOpen}
+                    />
+                    <span className="session-title">{session.title || "Untitled session"}</span>
+                    {session.archived && <span className="session-meta">archived</span>}
+                </li>
+            ))}
         </ul>
     );
 }
