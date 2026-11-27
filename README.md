@@ -123,11 +123,23 @@ lacks a permission), the page hides the actions for that repository and says why
   the pending review away, after asking. The button shows on an open PR, and on a closed one while
   your review of it is still pending
 - **Comment** at the foot of the Conversation tab comments on the PR itself
+- **Threads**, wherever they show: **Reply...** answers in the thread, into the pending review like a
+  new comment unless you choose **Add single comment**; **Resolve conversation** and **Unresolve
+  conversation** do what they say
+- **Your own comments** have **Edit** and **Delete** (after asking), and a review's summary has **Edit**
+- **Reactions** on the description, comments and reviews: click one to add yours or take it back,
+  or pick another from the `☺+` menu
+- **Viewed** beside each file marks it as viewed with GitHub's own per-user state, so it matches
+  github.com. Viewed files start folded, the toolbar counts them, and a file changed since you
+  viewed it says so
+- **Reviewers** in the sidebar: **Re-request** asks someone who reviewed for another review, and
+  **Dismiss** dismisses an approval or a request for changes, with the reason GitHub asks for
 - Every text box has **Preview**, which GitHub renders (`POST /markdown`), sanitised like any body
 
 Nothing posts by accident: a comment on the diff goes into the pending review unless you choose
-otherwise. Every unsent comment is kept in `localStorage` per PR, file and line as you type, so a
-refresh or a reload never loses it, and its box reopens where it was. **Cancel** drops it.
+otherwise. Every unsent comment, reply and edit is kept in `localStorage` per PR, file and line as
+you type, so a refresh or a reload never loses it, and its box reopens where it was. **Cancel**
+drops it.
 
 ## Cross-repo grouping
 
@@ -348,8 +360,10 @@ read of the PR, one lookup per PR below it and one per level above it, at most 5
 ETags these cost nothing once unchanged. In live mode an open PR adds its own change check, one more
 point every 15 seconds, so about 480 points an hour with the list's.
 
-A review action is one write (two for the first comment of a review, which opens the review first),
-after which the PR is read again so the page shows what GitHub made of it. A preview is one
+The Files changed tab reads which files you viewed with one more GraphQL query per 100 files, read
+again with the PR. A review action is one write (two for the first comment of a review, which opens
+the review first), after which the PR, or for a viewed mark the viewed state, is read again so the
+page shows what GitHub made of it. A preview is one
 `POST /markdown` per text previewed.
 
 ## Development

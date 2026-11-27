@@ -1,17 +1,21 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { PrSession } from "../../../shared/sessions.ts";
+import { useDashboardState } from "../app/DashboardProvider.tsx";
+import { useWriteAccess } from "../app/writeAccess.tsx";
+import { dismissReview, requestReview } from "../github/review.ts";
 import { PrDraftIcon, PrOpenIcon, SparkIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
 import { labelColor } from "../logic/labels.ts";
 import { prRouteOf } from "../logic/prRoute.ts";
-import { type ReviewerState, reviewers } from "../logic/reviewers.ts";
+import { canDismiss, canReRequest, type Reviewer, type ReviewerState, reviewers } from "../logic/reviewers.ts";
 import { type SessionRole, sessionLink } from "../logic/sessionLinks.ts";
 import type { StackNode } from "../logic/stacks.ts";
 import { timeAgo } from "../logic/time.ts";
 import { usePrListContext } from "./listContext.ts";
 import { useOpenPr } from "./PrContext.tsx";
 import { usePullRequestStack } from "./usePullRequest.ts";
+import { usePrWrite } from "./useWrite.ts";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
     return (
@@ -32,6 +36,70 @@ const REVIEWER_STATE: Record<ReviewerState, { text: string; className: string }>
     DISMISSED: { text: "Dismissed", className: "review-pending" },
 };
 
+function ReviewerActions({ reviewer }: { reviewer: Reviewer }) {
+    const { route, detail } = useOpenPr();
+    const { github } = useDashboardState();
+    const { canWrite } = useWriteAccess(route);
+    const [dismissing, setDismissing] = useState(false);
+    const [message, setMessage] = useState("");
+    const ask = usePrWrite((client) => requestReview(client, route, reviewer.name));
+    const dismiss = usePrWrite((client, text: string) => dismissReview(client, reviewer.reviewId ?? "", text));
+    if (!canWrite || detail.pr.state !== "OPEN") return null;
+    const reRequest = canReRequest(reviewer, github?.login ?? null, detail.pr.author?.login ?? null);
+    const error = ask.error ?? dismiss.error;
+    return (
+        <>
+            {reRequest && (
+                <button
+                    type="button"
+                    className="link-btn reviewer-action"
+                    title={`Ask ${reviewer.name} for another review`}
+                    disabled={ask.isPending}
+                    onClick={() => ask.mutate(undefined)}
+                >
+                    Re-request
+                </button>
+            )}
+            {canDismiss(reviewer) && !dismissing && (
+                <button
+                    type="button"
+                    className="link-btn reviewer-action"
+                    title={`Dismiss ${reviewer.name}'s review`}
+                    onClick={() => setDismissing(true)}
+                >
+                    Dismiss
+                </button>
+            )}
+            {dismissing && (
+                <form
+                    className="dismiss-form"
+                    aria-label={`Dismiss ${reviewer.name}'s review`}
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        if (message.trim() && !dismiss.isPending) {
+                            dismiss.mutate(message, { onSuccess: () => setDismissing(false) });
+                        }
+                    }}
+                >
+                    <input
+                        aria-label="Why the review is dismissed"
+                        placeholder="Why dismiss it?"
+                        value={message}
+                        onChange={(event) => setMessage(event.target.value)}
+                    />
+                    <button type="button" className="step-btn" onClick={() => setDismissing(false)}>
+                        Cancel
+                    </button>
+                    <button type="submit" className="danger-btn" disabled={!message.trim() || dismiss.isPending}>
+                        Dismiss review
+                    </button>
+                </form>
+            )}
+            {error && <span className="error-text">{error.message}</span>}
+        </>
+    );
+}
+
 function Reviewers() {
     const { pr } = useOpenPr().detail;
     const list = reviewers(
@@ -45,7 +113,7 @@ function Reviewers() {
                     {list.map((reviewer) => {
                         const state = REVIEWER_STATE[reviewer.state];
                         return (
-                            <li key={reviewer.name}>
+                            <li key={reviewer.name} className="reviewer">
                                 <span className="who">
                                     {reviewer.avatarUrl && (
                                         <img
@@ -59,6 +127,7 @@ function Reviewers() {
                                     {reviewer.name}
                                 </span>
                                 <span className={`review-status ${state.className}`}>{state.text}</span>
+                                <ReviewerActions reviewer={reviewer} />
                             </li>
                         );
                     })}

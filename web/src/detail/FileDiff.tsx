@@ -1,6 +1,7 @@
 import { DiffFile, DiffModeEnum, DiffViewWithMultiSelect, SplitSide } from "@git-diff-view/react";
 import "@git-diff-view/react/styles/diff-view-pure.css";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
+import type { FileViewedState } from "../github/gql/graphql.ts";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { ChevronIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
@@ -46,6 +47,10 @@ export interface FileDiffProps {
     theme: "light" | "dark";
     collapsed: boolean;
     onToggle: () => void;
+    /** The reader's viewed state of the file, which GitHub keeps for them. */
+    viewed: FileViewedState | undefined;
+    /** Marks the file viewed or not; null where the reader cannot. */
+    onViewed: ((viewed: boolean) => void) | null;
     /** A large diff the reader asked to see. */
     loaded: boolean;
     onLoad: () => void;
@@ -170,6 +175,7 @@ function LineExtrasView({ data, lines }: { data: LineExtras | undefined; lines: 
 /** One file of the diff: its header, its file-level threads, and its hunks with their threads unless collapsed. */
 export function FileDiff(props: FileDiffProps) {
     const { route, file, headOid, mode, theme, collapsed, onToggle, threads, blobUrl, composers, onComment } = props;
+    const { viewed, onViewed } = props;
     const [wantsContext, setWantsContext] = useState(false);
     const body = collapsed ? null : bodyOf(props);
     const hunks = body && "hunks" in body ? body.hunks : null;
@@ -254,6 +260,17 @@ export function FileDiff(props: FileDiffProps) {
                     <External className="file-view" href={blobUrl}>
                         View file
                     </External>
+                )}
+                {viewed === "DISMISSED" && <span className="file-status">Changed since last viewed</span>}
+                {onViewed && (
+                    <label className="file-viewed">
+                        <input
+                            type="checkbox"
+                            checked={viewed === "VIEWED"}
+                            onChange={(event) => onViewed(event.target.checked)}
+                        />
+                        Viewed
+                    </label>
                 )}
             </div>
             {body && (

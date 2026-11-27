@@ -7,11 +7,14 @@ import { useOpenPr } from "./PrContext.tsx";
 import { prQueryKey } from "./usePullRequest.ts";
 
 /**
- * A change to the open PR. Once GitHub has taken it, the PR is read again before the mutation counts as done,
- * so a comment box closes on the page that shows the comment; a refusal hides the write actions in its
- * repository.
+ * A change to the open PR. Once GitHub has taken it, the PR (or the part of it `reread` names) is read again
+ * before the mutation counts as done, so a comment box closes on the page that shows the comment; a refusal
+ * hides the write actions in its repository.
  */
-export function usePrWrite<TArgs>(write: (client: GitHubClient, args: TArgs) => Promise<unknown>) {
+export function usePrWrite<TArgs>(
+    write: (client: GitHubClient, args: TArgs) => Promise<unknown>,
+    { reread }: { reread?: string } = {},
+) {
     const { route } = useOpenPr();
     const { github } = useDashboardState();
     const queryClient = useQueryClient();
@@ -21,7 +24,10 @@ export function usePrWrite<TArgs>(write: (client: GitHubClient, args: TArgs) => 
             if (!github) throw new Error("Not signed in");
             await write(github.client, args);
         },
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: prQueryKey(github?.id, route), exact: true }),
+        onSettled: () => {
+            const key = prQueryKey(github?.id, route);
+            return queryClient.invalidateQueries({ queryKey: reread ? [...key, reread] : key, exact: true });
+        },
         onError: (error) => {
             if (error instanceof WriteRefused) access.refuse(error.message);
         },

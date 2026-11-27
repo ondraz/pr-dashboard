@@ -42,6 +42,15 @@ export type DiffSide =
   /** The right side of the diff. */
   | 'RIGHT';
 
+/** The possible viewed states of a file . */
+export type FileViewedState =
+  /** The file has new changes since last viewed. */
+  | 'DISMISSED'
+  /** The file has not been marked as viewed. */
+  | 'UNVIEWED'
+  /** The file has been marked as viewed. */
+  | 'VIEWED';
+
 /** The possible states of an issue. */
 export type IssueState =
   /** An issue that has been closed */
@@ -155,6 +164,25 @@ export type PullRequestState =
   /** A pull request that is still open. */
   | 'OPEN';
 
+/** Emojis that can be attached to Issues, Pull Requests and Comments. */
+export type ReactionContent =
+  /** Represents the `:confused:` emoji. */
+  | 'CONFUSED'
+  /** Represents the `:eyes:` emoji. */
+  | 'EYES'
+  /** Represents the `:heart:` emoji. */
+  | 'HEART'
+  /** Represents the `:hooray:` emoji. */
+  | 'HOORAY'
+  /** Represents the `:laugh:` emoji. */
+  | 'LAUGH'
+  /** Represents the `:rocket:` emoji. */
+  | 'ROCKET'
+  /** Represents the `:-1:` emoji. */
+  | 'THUMBS_DOWN'
+  /** Represents the `:+1:` emoji. */
+  | 'THUMBS_UP';
+
 /** The possible commit status states. */
 export type StatusState =
   /** Status is errored. */
@@ -265,6 +293,8 @@ export type ActorFieldsFragment =
   | ActorFields_User_Fragment
 ;
 
+export type ReactionGroupFieldsFragment = { content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } };
+
 type RequestedReviewerFields_Bot_Fragment = { login: string };
 
 type RequestedReviewerFields_Mannequin_Fragment = { login: string };
@@ -333,13 +363,13 @@ export type TimelinePageFragment = { pageInfo: { hasNextPage: boolean, endCursor
         | { login: string, avatarUrl: string, url: string }
        | null, beforeCommit: { abbreviatedOid: string } | null, afterCommit: { abbreviatedOid: string } | null }
     | { __typename: 'HeadRefRestoredEvent' }
-    | { __typename: 'IssueComment', id: string, createdAt: string, url: string, bodyHTML: string, author:
+    | { __typename: 'IssueComment', id: string, createdAt: string, url: string, body: string, bodyHTML: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
-       | null }
+       | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null }
     | { __typename: 'LabeledEvent', id: string, createdAt: string, actor:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
@@ -364,13 +394,13 @@ export type TimelinePageFragment = { pageInfo: { hasNextPage: boolean, endCursor
     | { __typename: 'PinnedEvent' }
     | { __typename: 'PullRequestCommit', id: string, commit: { oid: string, abbreviatedOid: string, messageHeadline: string, committedDate: string, url: string, author: { name: string | null, avatarUrl: string, user: { login: string } | null } | null } }
     | { __typename: 'PullRequestCommitCommentThread' }
-    | { __typename: 'PullRequestReview', id: string, createdAt: string, submittedAt: string | null, url: string, state: PullRequestReviewState, bodyHTML: string, author:
+    | { __typename: 'PullRequestReview', id: string, createdAt: string, submittedAt: string | null, url: string, state: PullRequestReviewState, body: string, bodyHTML: string, viewerCanUpdate: boolean, viewerCanReact: boolean, author:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
-       | null }
+       | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null }
     | { __typename: 'PullRequestReviewThread' }
     | { __typename: 'PullRequestRevisionMarker' }
     | { __typename: 'ReadyForReviewEvent', id: string, createdAt: string, actor:
@@ -453,13 +483,13 @@ export type TimelinePageFragment = { pageInfo: { hasNextPage: boolean, endCursor
     | { __typename: 'UserBlockedEvent' }
    | null> | null };
 
-export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, author:
+export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
-         | null, pullRequestReview: { id: string } | null } | null> | null } } | null> | null };
+         | null, pullRequestReview: { id: string } | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null } | null> | null } } | null> | null };
 
 export type HeadChecksFragment = { headCommit: { nodes: Array<{ commit: { oid: string, statusCheckRollup: { state: StatusState, contexts: { checkRunCountsByState: Array<{ state: CheckRunState, count: number }> | null, statusContextCountsByState: Array<{ state: StatusState, count: number }> | null } } | null } } | null> | null } };
 
@@ -481,7 +511,7 @@ export type PullRequestDetailQueryVariables = Exact<{
 }>;
 
 
-export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, baseRefOid: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, changedFiles: number, viewerDidAuthor: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
+export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, baseRefOid: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, viewerCanReact: boolean, changedFiles: number, viewerDidAuthor: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
@@ -490,7 +520,7 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
        | null, headRepositoryOwner:
         | { login: string }
         | { login: string }
-       | null, autoMergeRequest: { mergeMethod: PullRequestMergeMethod, enabledBy:
+       | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null, autoMergeRequest: { mergeMethod: PullRequestMergeMethod, enabledBy:
           | { login: string }
           | { login: string }
           | { login: string }
@@ -501,7 +531,7 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
             | { login: string }
             | { name: string, combinedSlug: string }
             | { login: string }
-           | null } | null> | null } | null, latestReviews: { nodes: Array<{ state: PullRequestReviewState, submittedAt: string | null, author:
+           | null } | null> | null } | null, latestReviews: { nodes: Array<{ id: string, state: PullRequestReviewState, submittedAt: string | null, author:
             | { login: string, avatarUrl: string, url: string }
             | { login: string, avatarUrl: string, url: string }
             | { login: string, avatarUrl: string, url: string }
@@ -513,13 +543,13 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
             | { login: string }
             | { login: string }
             | { login: string }
-           | null } | null> | null } | null, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, author:
+           | null } | null> | null } | null, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
-               | null, pullRequestReview: { id: string } | null } | null> | null } } | null> | null }, timelineItems: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<
+               | null, pullRequestReview: { id: string } | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null } | null> | null } } | null> | null }, timelineItems: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<
           | { __typename: 'AddedToMergeQueueEvent' }
           | { __typename: 'AddedToProjectEvent' }
           | { __typename: 'AssignedEvent' }
@@ -570,13 +600,13 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
               | { login: string, avatarUrl: string, url: string }
              | null, beforeCommit: { abbreviatedOid: string } | null, afterCommit: { abbreviatedOid: string } | null }
           | { __typename: 'HeadRefRestoredEvent' }
-          | { __typename: 'IssueComment', id: string, createdAt: string, url: string, bodyHTML: string, author:
+          | { __typename: 'IssueComment', id: string, createdAt: string, url: string, body: string, bodyHTML: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
-             | null }
+             | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null }
           | { __typename: 'LabeledEvent', id: string, createdAt: string, actor:
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
@@ -601,13 +631,13 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
           | { __typename: 'PinnedEvent' }
           | { __typename: 'PullRequestCommit', id: string, commit: { oid: string, abbreviatedOid: string, messageHeadline: string, committedDate: string, url: string, author: { name: string | null, avatarUrl: string, user: { login: string } | null } | null } }
           | { __typename: 'PullRequestCommitCommentThread' }
-          | { __typename: 'PullRequestReview', id: string, createdAt: string, submittedAt: string | null, url: string, state: PullRequestReviewState, bodyHTML: string, author:
+          | { __typename: 'PullRequestReview', id: string, createdAt: string, submittedAt: string | null, url: string, state: PullRequestReviewState, body: string, bodyHTML: string, viewerCanUpdate: boolean, viewerCanReact: boolean, author:
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
-             | null }
+             | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null }
           | { __typename: 'PullRequestReviewThread' }
           | { __typename: 'PullRequestRevisionMarker' }
           | { __typename: 'ReadyForReviewEvent', id: string, createdAt: string, actor:
@@ -749,13 +779,13 @@ export type PullRequestTimelinePageQuery = { repository: { pullRequest: { timeli
               | { login: string, avatarUrl: string, url: string }
              | null, beforeCommit: { abbreviatedOid: string } | null, afterCommit: { abbreviatedOid: string } | null }
           | { __typename: 'HeadRefRestoredEvent' }
-          | { __typename: 'IssueComment', id: string, createdAt: string, url: string, bodyHTML: string, author:
+          | { __typename: 'IssueComment', id: string, createdAt: string, url: string, body: string, bodyHTML: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
-             | null }
+             | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null }
           | { __typename: 'LabeledEvent', id: string, createdAt: string, actor:
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
@@ -780,13 +810,13 @@ export type PullRequestTimelinePageQuery = { repository: { pullRequest: { timeli
           | { __typename: 'PinnedEvent' }
           | { __typename: 'PullRequestCommit', id: string, commit: { oid: string, abbreviatedOid: string, messageHeadline: string, committedDate: string, url: string, author: { name: string | null, avatarUrl: string, user: { login: string } | null } | null } }
           | { __typename: 'PullRequestCommitCommentThread' }
-          | { __typename: 'PullRequestReview', id: string, createdAt: string, submittedAt: string | null, url: string, state: PullRequestReviewState, bodyHTML: string, author:
+          | { __typename: 'PullRequestReview', id: string, createdAt: string, submittedAt: string | null, url: string, state: PullRequestReviewState, body: string, bodyHTML: string, viewerCanUpdate: boolean, viewerCanReact: boolean, author:
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
               | { login: string, avatarUrl: string, url: string }
-             | null }
+             | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null }
           | { __typename: 'PullRequestReviewThread' }
           | { __typename: 'PullRequestRevisionMarker' }
           | { __typename: 'ReadyForReviewEvent', id: string, createdAt: string, actor:
@@ -877,13 +907,13 @@ export type ReviewThreadDetailPageQueryVariables = Exact<{
 }>;
 
 
-export type ReviewThreadDetailPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, author:
+export type ReviewThreadDetailPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
-               | null, pullRequestReview: { id: string } | null } | null> | null } } | null> | null } } | null } | null };
+               | null, pullRequestReview: { id: string } | null, reactionGroups: Array<{ content: ReactionContent, viewerHasReacted: boolean, reactors: { totalCount: number } }> | null } | null> | null } } | null> | null } } | null } | null };
 
 export type PullRequestCommitsQueryVariables = Exact<{
   owner: string;
@@ -894,6 +924,16 @@ export type PullRequestCommitsQueryVariables = Exact<{
 
 
 export type PullRequestCommitsQuery = { repository: { pullRequest: { commits: { totalCount: number, pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ commit: { oid: string, abbreviatedOid: string, messageHeadline: string, committedDate: string, url: string, author: { name: string | null, avatarUrl: string, user: { login: string } | null } | null } } | null> | null } } | null } | null };
+
+export type PullRequestViewedFilesQueryVariables = Exact<{
+  owner: string;
+  name: string;
+  number: number;
+  after?: string | null | undefined;
+}>;
+
+
+export type PullRequestViewedFilesQuery = { repository: { pullRequest: { files: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ path: string, viewerViewedState: FileViewedState } | null> | null } | null } | null } | null };
 
 export type AddPendingReviewMutationVariables = Exact<{
   pullRequestId: string | number;
@@ -950,6 +990,107 @@ export type AddCommentMutationVariables = Exact<{
 
 
 export type AddCommentMutation = { addComment: { commentEdge: { node: { id: string } | null } | null } | null };
+
+export type AddThreadReplyMutationVariables = Exact<{
+  threadId: string | number;
+  body: string;
+  pullRequestReviewId?: string | number | null | undefined;
+}>;
+
+
+export type AddThreadReplyMutation = { addPullRequestReviewThreadReply: { comment: { id: string } | null } | null };
+
+export type ResolveThreadMutationVariables = Exact<{
+  threadId: string | number;
+}>;
+
+
+export type ResolveThreadMutation = { resolveReviewThread: { thread: { id: string } | null } | null };
+
+export type UnresolveThreadMutationVariables = Exact<{
+  threadId: string | number;
+}>;
+
+
+export type UnresolveThreadMutation = { unresolveReviewThread: { thread: { id: string } | null } | null };
+
+export type UpdateReviewCommentMutationVariables = Exact<{
+  id: string | number;
+  body: string;
+}>;
+
+
+export type UpdateReviewCommentMutation = { updatePullRequestReviewComment: { pullRequestReviewComment: { id: string } | null } | null };
+
+export type DeleteReviewCommentMutationVariables = Exact<{
+  id: string | number;
+}>;
+
+
+export type DeleteReviewCommentMutation = { deletePullRequestReviewComment: { pullRequestReview: { id: string } | null } | null };
+
+export type UpdateIssueCommentMutationVariables = Exact<{
+  id: string | number;
+  body: string;
+}>;
+
+
+export type UpdateIssueCommentMutation = { updateIssueComment: { issueComment: { id: string } | null } | null };
+
+export type DeleteIssueCommentMutationVariables = Exact<{
+  id: string | number;
+}>;
+
+
+export type DeleteIssueCommentMutation = { deleteIssueComment: { clientMutationId: string | null } | null };
+
+export type UpdateReviewMutationVariables = Exact<{
+  id: string | number;
+  body: string;
+}>;
+
+
+export type UpdateReviewMutation = { updatePullRequestReview: { pullRequestReview: { id: string } | null } | null };
+
+export type AddReactionMutationVariables = Exact<{
+  subjectId: string | number;
+  content: ReactionContent;
+}>;
+
+
+export type AddReactionMutation = { addReaction: { reaction: { content: ReactionContent } | null } | null };
+
+export type RemoveReactionMutationVariables = Exact<{
+  subjectId: string | number;
+  content: ReactionContent;
+}>;
+
+
+export type RemoveReactionMutation = { removeReaction: { reaction: { content: ReactionContent } | null } | null };
+
+export type MarkFileViewedMutationVariables = Exact<{
+  pullRequestId: string | number;
+  path: string;
+}>;
+
+
+export type MarkFileViewedMutation = { markFileAsViewed: { clientMutationId: string | null } | null };
+
+export type UnmarkFileViewedMutationVariables = Exact<{
+  pullRequestId: string | number;
+  path: string;
+}>;
+
+
+export type UnmarkFileViewedMutation = { unmarkFileAsViewed: { clientMutationId: string | null } | null };
+
+export type DismissReviewMutationVariables = Exact<{
+  id: string | number;
+  message: string;
+}>;
+
+
+export type DismissReviewMutation = { dismissPullRequestReview: { pullRequestReview: { id: string } | null } | null };
 
 export class TypedDocumentString<TResult, TVariables>
   extends String
@@ -1073,6 +1214,15 @@ export const ActorFieldsFragmentDoc = new TypedDocumentString(`
   url
 }
     `, {"fragmentName":"ActorFields"}) as unknown as TypedDocumentString<ActorFieldsFragment, unknown>;
+export const ReactionGroupFieldsFragmentDoc = new TypedDocumentString(`
+    fragment ReactionGroupFields on ReactionGroup {
+  content
+  viewerHasReacted
+  reactors {
+    totalCount
+  }
+}
+    `, {"fragmentName":"ReactionGroupFields"}) as unknown as TypedDocumentString<ReactionGroupFieldsFragment, unknown>;
 export const PullCommitFieldsFragmentDoc = new TypedDocumentString(`
     fragment PullCommitFields on Commit {
   oid
@@ -1118,9 +1268,16 @@ export const TimelinePageFragmentDoc = new TypedDocumentString(`
       id
       createdAt
       url
+      body
       bodyHTML
       author {
         ...ActorFields
+      }
+      viewerCanUpdate
+      viewerCanDelete
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
       }
     }
     ... on PullRequestReview {
@@ -1129,9 +1286,15 @@ export const TimelinePageFragmentDoc = new TypedDocumentString(`
       submittedAt
       url
       state
+      body
       bodyHTML
       author {
         ...ActorFields
+      }
+      viewerCanUpdate
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
       }
     }
     ... on PullRequestCommit {
@@ -1271,6 +1434,13 @@ export const TimelinePageFragmentDoc = new TypedDocumentString(`
   avatarUrl(size: 40)
   url
 }
+fragment ReactionGroupFields on ReactionGroup {
+  content
+  viewerHasReacted
+  reactors {
+    totalCount
+  }
+}
 fragment RequestedReviewerFields on RequestedReviewer {
   ... on User {
     login
@@ -1317,12 +1487,16 @@ export const ReviewThreadDetailPageFragmentDoc = new TypedDocumentString(`
     originalStartLine
     diffSide
     subjectType
+    viewerCanReply
+    viewerCanResolve
+    viewerCanUnresolve
     comments(first: 100) {
       totalCount
       nodes {
         id
         createdAt
         url
+        body
         bodyHTML
         state
         diffHunk
@@ -1332,6 +1506,12 @@ export const ReviewThreadDetailPageFragmentDoc = new TypedDocumentString(`
         pullRequestReview {
           id
         }
+        viewerCanUpdate
+        viewerCanDelete
+        viewerCanReact
+        reactionGroups {
+          ...ReactionGroupFields
+        }
       }
     }
   }
@@ -1340,6 +1520,13 @@ export const ReviewThreadDetailPageFragmentDoc = new TypedDocumentString(`
   login
   avatarUrl(size: 40)
   url
+}
+fragment ReactionGroupFields on ReactionGroup {
+  content
+  viewerHasReacted
+  reactors {
+    totalCount
+  }
 }`, {"fragmentName":"ReviewThreadDetailPage"}) as unknown as TypedDocumentString<ReviewThreadDetailPageFragment, unknown>;
 export const HeadChecksFragmentDoc = new TypedDocumentString(`
     fragment HeadChecks on PullRequest {
@@ -1507,6 +1694,10 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
       isCrossRepository
       body
       bodyHTML
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
+      }
       ...PullRequestProbeFields
       ...HeadChecks
       autoMergeRequest {
@@ -1528,6 +1719,7 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
       }
       latestReviews(first: 50) {
         nodes {
+          id
           state
           submittedAt
           author {
@@ -1624,6 +1816,13 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
   avatarUrl(size: 40)
   url
 }
+fragment ReactionGroupFields on ReactionGroup {
+  content
+  viewerHasReacted
+  reactors {
+    totalCount
+  }
+}
 fragment RequestedReviewerFields on RequestedReviewer {
   ... on User {
     login
@@ -1664,9 +1863,16 @@ fragment TimelinePage on PullRequestTimelineItemsConnection {
       id
       createdAt
       url
+      body
       bodyHTML
       author {
         ...ActorFields
+      }
+      viewerCanUpdate
+      viewerCanDelete
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
       }
     }
     ... on PullRequestReview {
@@ -1675,9 +1881,15 @@ fragment TimelinePage on PullRequestTimelineItemsConnection {
       submittedAt
       url
       state
+      body
       bodyHTML
       author {
         ...ActorFields
+      }
+      viewerCanUpdate
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
       }
     }
     ... on PullRequestCommit {
@@ -1828,12 +2040,16 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
     originalStartLine
     diffSide
     subjectType
+    viewerCanReply
+    viewerCanResolve
+    viewerCanUnresolve
     comments(first: 100) {
       totalCount
       nodes {
         id
         createdAt
         url
+        body
         bodyHTML
         state
         diffHunk
@@ -1842,6 +2058,12 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
         }
         pullRequestReview {
           id
+        }
+        viewerCanUpdate
+        viewerCanDelete
+        viewerCanReact
+        reactionGroups {
+          ...ReactionGroupFields
         }
       }
     }
@@ -1926,6 +2148,13 @@ export const PullRequestTimelinePageDocument = new TypedDocumentString(`
   avatarUrl(size: 40)
   url
 }
+fragment ReactionGroupFields on ReactionGroup {
+  content
+  viewerHasReacted
+  reactors {
+    totalCount
+  }
+}
 fragment RequestedReviewerFields on RequestedReviewer {
   ... on User {
     login
@@ -1966,9 +2195,16 @@ fragment TimelinePage on PullRequestTimelineItemsConnection {
       id
       createdAt
       url
+      body
       bodyHTML
       author {
         ...ActorFields
+      }
+      viewerCanUpdate
+      viewerCanDelete
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
       }
     }
     ... on PullRequestReview {
@@ -1977,9 +2213,15 @@ fragment TimelinePage on PullRequestTimelineItemsConnection {
       submittedAt
       url
       state
+      body
       bodyHTML
       author {
         ...ActorFields
+      }
+      viewerCanUpdate
+      viewerCanReact
+      reactionGroups {
+        ...ReactionGroupFields
       }
     }
     ... on PullRequestCommit {
@@ -2129,6 +2371,13 @@ export const ReviewThreadDetailPageDocument = new TypedDocumentString(`
   avatarUrl(size: 40)
   url
 }
+fragment ReactionGroupFields on ReactionGroup {
+  content
+  viewerHasReacted
+  reactors {
+    totalCount
+  }
+}
 fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
   pageInfo {
     hasNextPage
@@ -2145,12 +2394,16 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
     originalStartLine
     diffSide
     subjectType
+    viewerCanReply
+    viewerCanResolve
+    viewerCanUnresolve
     comments(first: 100) {
       totalCount
       nodes {
         id
         createdAt
         url
+        body
         bodyHTML
         state
         diffHunk
@@ -2159,6 +2412,12 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
         }
         pullRequestReview {
           id
+        }
+        viewerCanUpdate
+        viewerCanDelete
+        viewerCanReact
+        reactionGroups {
+          ...ReactionGroupFields
         }
       }
     }
@@ -2197,6 +2456,24 @@ export const PullRequestCommitsDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<PullRequestCommitsQuery, PullRequestCommitsQueryVariables>;
+export const PullRequestViewedFilesDocument = new TypedDocumentString(`
+    query PullRequestViewedFiles($owner: String!, $name: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      files(first: 100, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          path
+          viewerViewedState
+        }
+      }
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<PullRequestViewedFilesQuery, PullRequestViewedFilesQueryVariables>;
 export const AddPendingReviewDocument = new TypedDocumentString(`
     mutation AddPendingReview($pullRequestId: ID!, $commitOID: GitObjectID) {
   addPullRequestReview(
@@ -2275,3 +2552,122 @@ export const AddCommentDocument = new TypedDocumentString(`
   }
 }
     `) as unknown as TypedDocumentString<AddCommentMutation, AddCommentMutationVariables>;
+export const AddThreadReplyDocument = new TypedDocumentString(`
+    mutation AddThreadReply($threadId: ID!, $body: String!, $pullRequestReviewId: ID) {
+  addPullRequestReviewThreadReply(
+    input: {
+      pullRequestReviewThreadId: $threadId
+      body: $body
+      pullRequestReviewId: $pullRequestReviewId
+    }
+  ) {
+    comment {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AddThreadReplyMutation, AddThreadReplyMutationVariables>;
+export const ResolveThreadDocument = new TypedDocumentString(`
+    mutation ResolveThread($threadId: ID!) {
+  resolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<ResolveThreadMutation, ResolveThreadMutationVariables>;
+export const UnresolveThreadDocument = new TypedDocumentString(`
+    mutation UnresolveThread($threadId: ID!) {
+  unresolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<UnresolveThreadMutation, UnresolveThreadMutationVariables>;
+export const UpdateReviewCommentDocument = new TypedDocumentString(`
+    mutation UpdateReviewComment($id: ID!, $body: String!) {
+  updatePullRequestReviewComment(
+    input: { pullRequestReviewCommentId: $id, body: $body }
+  ) {
+    pullRequestReviewComment {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<UpdateReviewCommentMutation, UpdateReviewCommentMutationVariables>;
+export const DeleteReviewCommentDocument = new TypedDocumentString(`
+    mutation DeleteReviewComment($id: ID!) {
+  deletePullRequestReviewComment(input: { id: $id }) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<DeleteReviewCommentMutation, DeleteReviewCommentMutationVariables>;
+export const UpdateIssueCommentDocument = new TypedDocumentString(`
+    mutation UpdateIssueComment($id: ID!, $body: String!) {
+  updateIssueComment(input: { id: $id, body: $body }) {
+    issueComment {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<UpdateIssueCommentMutation, UpdateIssueCommentMutationVariables>;
+export const DeleteIssueCommentDocument = new TypedDocumentString(`
+    mutation DeleteIssueComment($id: ID!) {
+  deleteIssueComment(input: { id: $id }) {
+    clientMutationId
+  }
+}
+    `) as unknown as TypedDocumentString<DeleteIssueCommentMutation, DeleteIssueCommentMutationVariables>;
+export const UpdateReviewDocument = new TypedDocumentString(`
+    mutation UpdateReview($id: ID!, $body: String!) {
+  updatePullRequestReview(input: { pullRequestReviewId: $id, body: $body }) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<UpdateReviewMutation, UpdateReviewMutationVariables>;
+export const AddReactionDocument = new TypedDocumentString(`
+    mutation AddReaction($subjectId: ID!, $content: ReactionContent!) {
+  addReaction(input: { subjectId: $subjectId, content: $content }) {
+    reaction {
+      content
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AddReactionMutation, AddReactionMutationVariables>;
+export const RemoveReactionDocument = new TypedDocumentString(`
+    mutation RemoveReaction($subjectId: ID!, $content: ReactionContent!) {
+  removeReaction(input: { subjectId: $subjectId, content: $content }) {
+    reaction {
+      content
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<RemoveReactionMutation, RemoveReactionMutationVariables>;
+export const MarkFileViewedDocument = new TypedDocumentString(`
+    mutation MarkFileViewed($pullRequestId: ID!, $path: String!) {
+  markFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+    clientMutationId
+  }
+}
+    `) as unknown as TypedDocumentString<MarkFileViewedMutation, MarkFileViewedMutationVariables>;
+export const UnmarkFileViewedDocument = new TypedDocumentString(`
+    mutation UnmarkFileViewed($pullRequestId: ID!, $path: String!) {
+  unmarkFileAsViewed(input: { pullRequestId: $pullRequestId, path: $path }) {
+    clientMutationId
+  }
+}
+    `) as unknown as TypedDocumentString<UnmarkFileViewedMutation, UnmarkFileViewedMutationVariables>;
+export const DismissReviewDocument = new TypedDocumentString(`
+    mutation DismissReview($id: ID!, $message: String!) {
+  dismissPullRequestReview(input: { pullRequestReviewId: $id, message: $message }) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<DismissReviewMutation, DismissReviewMutationVariables>;

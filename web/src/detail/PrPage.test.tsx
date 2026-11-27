@@ -34,7 +34,7 @@ const fields = pullRequestFields({
     reviewDecision: "CHANGES_REQUESTED",
     reviewRequests: { nodes: [{ requestedReviewer: { login: "dave" } }] },
     latestReviews: {
-        nodes: [{ state: "CHANGES_REQUESTED", submittedAt: "2026-11-25T11:00:00Z", author: actor("bob") }],
+        nodes: [{ id: "PRR_1", state: "CHANGES_REQUESTED", submittedAt: "2026-11-25T11:00:00Z", author: actor("bob") }],
     },
     assignees: { nodes: [actor("alice")] },
     labels: { nodes: [{ name: "backend" }] },

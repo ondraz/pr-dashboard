@@ -1,9 +1,13 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
+import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { drafts, useDraftKeys } from "../app/drafts.ts";
 import { usePersistedChoice } from "../app/storage.ts";
 import { useWriteAccess } from "../app/writeAccess.tsx";
+import type { FileViewedState } from "../github/gql/graphql.ts";
 import type { ReviewThread } from "../github/pullRequest.ts";
+import { setFileViewed } from "../github/review.ts";
 import { External } from "../list/PrRows.tsx";
 import {
     buildFileTree,
@@ -30,7 +34,8 @@ import { FileTree } from "./FileTree.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 import { Thread } from "./Thread.tsx";
 import { type DiffFiles, useColorScheme, useDiffFiles, useRawDiff } from "./useDiff.ts";
-import { usePullRequestCommits } from "./usePullRequest.ts";
+import { prQueryKey, usePullRequestCommits, useViewedFiles } from "./usePullRequest.ts";
+import { usePrWrite } from "./useWrite.ts";
 
 const MODES: readonly DiffMode[] = ["unified", "split"];
 
@@ -149,10 +154,39 @@ export function FilesTab() {
     const [mode, setMode] = usePersistedChoice<DiffMode>("diff_view", MODES, "unified");
     const theme = useColorScheme();
     const [filter, setFilter] = useState("");
-    const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+    // The reader's own folding, over the default of folding the files they marked as viewed.
+    const [folded, setFolded] = useState<ReadonlyMap<string, boolean>>(new Map());
+    const viewed = useViewedFiles(route).data;
+    const isCollapsed = (path: string) => folded.get(path) ?? viewed?.get(path) === "VIEWED";
+    const fold = (paths: readonly string[], on: boolean | null) =>
+        setFolded((current) => {
+            const next = new Map(current);
+            for (const path of paths) {
+                if (on === null) next.delete(path);
+                else next.set(path, on);
+            }
+            return next;
+        });
     const [loaded, setLoaded] = useState<ReadonlySet<string>>(new Set());
     const headOid = diffHead(spec, pr.headRefOid);
     const { canWrite } = useWriteAccess(route);
+    const queryClient = useQueryClient();
+    const { github } = useDashboardState();
+    const markViewed = usePrWrite(
+        (client, args: { path: string; on: boolean }) => setFileViewed(client, pr.id, args.path, args.on),
+        { reread: "viewed" },
+    );
+    const onViewed = canWrite
+        ? (path: string, on: boolean) => {
+              queryClient.setQueryData<Map<string, FileViewedState>>(
+                  [...prQueryKey(github?.id, route), "viewed"],
+                  (current) => new Map(current).set(path, on ? "VIEWED" : "UNVIEWED"),
+              );
+              // Marking a file viewed folds it, and unmarking unfolds it, as on GitHub.
+              fold([path], null);
+              markViewed.mutate({ path, on });
+          }
+        : null;
     const composers = useComposers(route);
     // New comments go on the PR's whole diff, whose lines are the ones GitHub places them on.
     const onComment =
@@ -173,7 +207,7 @@ export function FilesTab() {
         [spec.kind, files, detail.threads],
     );
     const wantsRaw = ordered.some(
-        (file) => !collapsed.has(file.path) && (!isLargeDiff(file) || loaded.has(file.path)) && needsRawDiff(file),
+        (file) => !isCollapsed(file.path) && (!isLargeDiff(file) || loaded.has(file.path)) && needsRawDiff(file),
     );
     const raw = useRawDiff(route, spec, headOid, wantsRaw);
     const filesUrl = githubDiffUrl(pr.url, spec);
@@ -192,12 +226,13 @@ export function FilesTab() {
         content = <div className="empty">No files changed.</div>;
     } else {
         const open = (file: ChangedFile) => {
-            setCollapsed((current) => toggled(current, file.path, false));
+            fold([file.path], false);
             document.getElementById(fileAnchor(file.path))?.scrollIntoView({ block: "start" });
         };
         const additions = files.reduce((sum, file) => sum + file.additions, 0);
         const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
-        const someCollapsed = ordered.some((file) => collapsed.has(file.path));
+        const someCollapsed = ordered.some((file) => isCollapsed(file.path));
+        const viewedCount = viewed ? files.filter((file) => viewed.get(file.path) === "VIEWED").length : null;
         content = (
             <>
                 <div className="files-toolbar">
@@ -207,11 +242,19 @@ export function FilesTab() {
                         <span className="diffstat-del">−{deletions}</span>
                     </span>
                     <div className="files-actions">
+                        {viewedCount !== null && (
+                            <span className="files-viewed">
+                                {viewedCount} / {files.length} viewed
+                            </span>
+                        )}
                         <button
                             type="button"
                             className="step-btn"
                             onClick={() =>
-                                setCollapsed(someCollapsed ? new Set() : new Set(ordered.map((file) => file.path)))
+                                fold(
+                                    ordered.map((file) => file.path),
+                                    !someCollapsed,
+                                )
                             }
                         >
                             {someCollapsed ? "Expand all" : "Collapse all"}
@@ -264,10 +307,10 @@ export function FilesTab() {
                                 headOid={headOid}
                                 mode={mode}
                                 theme={theme}
-                                collapsed={collapsed.has(file.path)}
-                                onToggle={() =>
-                                    setCollapsed((current) => toggled(current, file.path, !current.has(file.path)))
-                                }
+                                collapsed={isCollapsed(file.path)}
+                                onToggle={() => fold([file.path], !isCollapsed(file.path))}
+                                viewed={viewed?.get(file.path)}
+                                onViewed={onViewed && ((on) => onViewed(file.path, on))}
                                 loaded={loaded.has(file.path)}
                                 onLoad={() => setLoaded((current) => toggled(current, file.path, true))}
                                 raw={{ sections: raw.data, error: raw.error }}

@@ -8,6 +8,16 @@ export const actorFieldsFragment = graphql(`
     }
 `);
 
+export const reactionGroupFragment = graphql(`
+    fragment ReactionGroupFields on ReactionGroup {
+        content
+        viewerHasReacted
+        reactors {
+            totalCount
+        }
+    }
+`);
+
 export const requestedReviewerFragment = graphql(`
     fragment RequestedReviewerFields on RequestedReviewer {
         ... on User {
@@ -56,9 +66,16 @@ export const timelinePageFragment = graphql(`
                 id
                 createdAt
                 url
+                body
                 bodyHTML
                 author {
                     ...ActorFields
+                }
+                viewerCanUpdate
+                viewerCanDelete
+                viewerCanReact
+                reactionGroups {
+                    ...ReactionGroupFields
                 }
             }
             ... on PullRequestReview {
@@ -67,9 +84,15 @@ export const timelinePageFragment = graphql(`
                 submittedAt
                 url
                 state
+                body
                 bodyHTML
                 author {
                     ...ActorFields
+                }
+                viewerCanUpdate
+                viewerCanReact
+                reactionGroups {
+                    ...ReactionGroupFields
                 }
             }
             ... on PullRequestCommit {
@@ -223,12 +246,16 @@ export const reviewThreadDetailPageFragment = graphql(`
             originalStartLine
             diffSide
             subjectType
+            viewerCanReply
+            viewerCanResolve
+            viewerCanUnresolve
             comments(first: 100) {
                 totalCount
                 nodes {
                     id
                     createdAt
                     url
+                    body
                     bodyHTML
                     state
                     diffHunk
@@ -237,6 +264,12 @@ export const reviewThreadDetailPageFragment = graphql(`
                     }
                     pullRequestReview {
                         id
+                    }
+                    viewerCanUpdate
+                    viewerCanDelete
+                    viewerCanReact
+                    reactionGroups {
+                        ...ReactionGroupFields
                     }
                 }
             }
@@ -333,6 +366,10 @@ export const pullRequestDetailQuery = graphql(`
                 isCrossRepository
                 body
                 bodyHTML
+                viewerCanReact
+                reactionGroups {
+                    ...ReactionGroupFields
+                }
                 ...PullRequestProbeFields
                 ...HeadChecks
                 autoMergeRequest {
@@ -354,6 +391,7 @@ export const pullRequestDetailQuery = graphql(`
                 }
                 latestReviews(first: 50) {
                     nodes {
+                        id
                         state
                         submittedAt
                         author {
@@ -506,6 +544,26 @@ export const pullRequestCommitsQuery = graphql(`
                         commit {
                             ...PullCommitFields
                         }
+                    }
+                }
+            }
+        }
+    }
+`);
+
+/** Which of the PR's files the viewer marked as viewed, which GitHub keeps per user, as on github.com. */
+export const pullRequestViewedFilesQuery = graphql(`
+    query PullRequestViewedFiles($owner: String!, $name: String!, $number: Int!, $after: String) {
+        repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+                files(first: 100, after: $after) {
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
+                    nodes {
+                        path
+                        viewerViewedState
                     }
                 }
             }
