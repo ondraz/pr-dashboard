@@ -41,7 +41,8 @@ interface ThreadLike {
 
 export interface FixInput {
     pr: PromptPr;
-    checks: readonly CheckEntry[];
+    /** Null when the sign-in could not read the checks; the session is told to read them itself. */
+    checks: readonly CheckEntry[] | null;
     threads: readonly PromptThread[];
     copilot: (CopilotVerdict & { url: string }) | null;
 }
@@ -93,7 +94,13 @@ function header(pr: PromptPr, verb: string): string[] {
     ];
 }
 
-function checkSection(pr: PromptPr, checks: readonly CheckEntry[], detailed: boolean): string[] {
+function checkSection(pr: PromptPr, checks: readonly CheckEntry[] | null, detailed: boolean): string[] {
+    if (!checks) {
+        return [
+            "",
+            `The checks could not be read here; see them with \`gh pr checks ${pr.number} --repo ${pr.owner}/${pr.repo}\`.`,
+        ];
+    }
     const failing = checks.filter((check) => check.group === "failing");
     if (!failing.length) return [];
     const lines = ["", "Failing checks:"];
@@ -146,8 +153,20 @@ function threadSection(threads: readonly PromptThread[], copilot: FixInput["copi
 
 /** Asks a session to make the PR's failing checks pass and to address its unresolved review threads. */
 export function fixPrompt({ pr, checks, threads, copilot }: FixInput): string {
-    const failing = checks.some((check) => check.group === "failing");
     const owed = threads.length > 0 || !!copilot;
+    if (!checks) {
+        return [
+            ...header(pr, "Fix"),
+            ...checkSection(pr, checks, true),
+            ...threadSection(threads, copilot),
+            "",
+            owed
+                ? "Make any failing checks pass and address the unresolved review threads."
+                : "Make any failing checks pass.",
+            `Work on the branch \`${pr.headRefName}\`, commit the fixes and push them to it. Where a review comment needs no change, say why instead of changing the code.`,
+        ].join("\n");
+    }
+    const failing = checks.some((check) => check.group === "failing");
     const task =
         failing && owed
             ? "Make the failing checks pass and address the unresolved review threads."

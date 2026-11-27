@@ -29,7 +29,9 @@ function usePrompt(task: AgentTask) {
     const { pr, threads } = detail;
     const checks = usePullRequestChecks(route, pr.headRefOid);
     return useMemo(() => {
-        if (!checks.data) return { prompt: null, error: checks.error, failing: 0, threads: 0 };
+        // A sign-in that cannot read the checks still gets a prompt, which leaves the checks to the session.
+        if (!checks.data && !checks.error) return { prompt: null, error: null, failing: 0, threads: 0 };
+        const read = checks.data?.checks ?? null;
         const promptPr = {
             owner: route.owner,
             repo: route.repo,
@@ -46,14 +48,14 @@ function usePrompt(task: AgentTask) {
             ...verdict,
             url: verdict.databaseId ? `${pr.url}#pullrequestreview-${verdict.databaseId}` : pr.url,
         };
-        const input = { pr: promptPr, checks: checks.data.checks, threads: unresolved, copilot };
+        const input = { pr: promptPr, checks: read, threads: unresolved, copilot };
         return {
             prompt:
                 task === "fix"
                     ? fixPrompt(input)
                     : reviewPrompt({ ...input, lastReviewedOid: pr.viewerLatestReview?.commit?.oid ?? null }),
-            error: null,
-            failing: checks.data.checks.filter((check) => check.group === "failing").length,
+            error: read ? null : checks.error,
+            failing: read ? read.filter((check) => check.group === "failing").length : null,
             threads: unresolved.length + (copilot ? 1 : 0),
         };
     }, [task, route, pr, threads, checks.data, checks.error]);
@@ -168,15 +170,22 @@ export function AgentPanel({ task, onClose }: { task: AgentTask; onClose: () => 
                     Close
                 </button>
             </div>
-            {error && !prompt ? (
-                <p className="error-text">The checks could not be read: {error.message}</p>
-            ) : !prompt ? (
+            {!prompt ? (
                 <p className="muted">Reading the checks...</p>
             ) : (
                 <>
                     <p className="muted">
-                        {plural(failing, "failing check")} and {plural(threads, "unresolved thread")} go into the
-                        prompt.
+                        {failing === null ? (
+                            <>
+                                The checks could not be read ({error?.message}), so the prompt asks the session to read
+                                them; {plural(threads, "unresolved thread")} go into it.
+                            </>
+                        ) : (
+                            <>
+                                {plural(failing, "failing check")} and {plural(threads, "unresolved thread")} go into
+                                the prompt.
+                            </>
+                        )}
                     </p>
                     <textarea className="agent-prompt" aria-label="Prompt" readOnly value={prompt} rows={10} />
                     <div className="agent-targets">

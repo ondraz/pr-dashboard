@@ -781,6 +781,27 @@ describe("PR page", () => {
             expect(within(panel).getByText("Review the gears")).toBeTruthy();
         });
 
+        it("builds the prompt from the threads when the sign-in cannot read the checks", async () => {
+            server.use(
+                github.query("CommitChecks", () =>
+                    HttpResponse.json({
+                        ...commitChecksResponse(null),
+                        errors: [{ message: "Resource not accessible by personal access token" }],
+                    }),
+                ),
+            );
+            open("/acme/widgets/pull/12");
+            await heading();
+            fireEvent.click(screen.getByRole("button", { name: "Fix with Claude" }));
+            const panel = screen.getByRole("region", { name: "Fix with Claude" });
+            const prompt = (await within(panel).findByRole("textbox", { name: "Prompt" })) as HTMLTextAreaElement;
+            expect(prompt.value).toContain("bob: Why 3?");
+            expect(prompt.value).toContain("gh pr checks 12 --repo acme/widgets");
+            expect(panel.textContent).toContain(
+                "The checks could not be read (Resource not accessible by personal access token)",
+            );
+        });
+
         it("offers only a new session when no session worked in the repository, and says when the copy failed", async () => {
             writeText.mockRejectedValue(new Error("denied"));
             open("/acme/widgets/pull/12", {

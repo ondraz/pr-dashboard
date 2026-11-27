@@ -3057,3 +3057,11 @@ kbd {
     font-size: 12px;
     overflow-wrap: anywhere;
 }
+/* A link drawn as the primary button keeps the button's text colour, not a link's. */
+a.primary-btn,
+a.primary-btn:visited,
+a.primary-btn:hover,
+.agent-link.primary-btn {
+    color: var(--color-btn-text);
+    text-decoration: none;
+}

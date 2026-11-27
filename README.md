@@ -413,14 +413,22 @@ without you: each step is a link you click.
   whether they were addressed.
 
 The prompt shows in full before it goes anywhere. **Copy prompt** copies it, and every link copies
-it as well:
+it as well. When the sign-in cannot read the checks (a token without **Checks** access), the prompt
+leaves them to the session, which reads them with `gh pr checks`.
 
-- **The session that made the PR** (for a fix) or **reviewed it** (for a review), the three most
-  recent: a desktop session opens with its usual link, so paste the prompt into it; a VS Code
-  session opens with the prompt already in its box.
-- **A new session**, in the desktop app (`claude://code/new?q=<prompt>`) or in VS Code
-  (`vscode://anthropic.claude-code/open?prompt=<prompt>`), which opens with the prompt in its box.
-  A prompt longer than 8,000 characters stays out of every link, to be pasted.
+- **A new session**, in the desktop app (`claude://code/new?q=<prompt>&folder=<checkout>`) or in
+  VS Code (`vscode://anthropic.claude-code/open?prompt=<prompt>`), which opens with the prompt in its
+  box. The desktop session opens in your checkout of the PR's repository, the one your most recent
+  desktop session there worked in; without one the app asks for a folder.
+- **An existing session**: the three most recent that made the PR (for a fix) or reviewed it (for a
+  review), then the five most recent other desktop sessions in the PR's repository. **Send** opens a
+  desktop session with the prompt in its link (`claude://claude.ai/epitaxy/<id>?q=<prompt>`), and a
+  VS Code session with it in its box. Whether the desktop app puts it in an open session's box is not
+  confirmed, so if the box stays empty, paste it.
+- A prompt longer than 8,000 characters stays out of every link, to be pasted.
+
+The server finds a desktop session's repository from the `.git` directory the app records for it,
+whose `origin` remote names the GitHub repository; the folder above that directory is the checkout.
 
 The list is read on every refresh and only answered to a loopback Host (`localhost`,
 `127.0.0.1` or `[::1]`), with no CORS header, so other sites cannot read it. Served any other
