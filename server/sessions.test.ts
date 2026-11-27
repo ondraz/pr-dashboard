@@ -1,11 +1,12 @@
 import { cp, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { PrSession } from "../shared/sessions.ts";
 import { REVIEW_ACTION, SessionIndex } from "./sessions.ts";
 
-const FIXTURES = new URL("./fixtures/", import.meta.url).pathname;
+const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const W = "https://github.com/example-org/widgets/pull/";
 const G = "https://github.com/example-org/gadgets/pull/";
 

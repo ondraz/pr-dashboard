@@ -158,8 +158,8 @@ and to the one that reviewed it. It reads two places:
 Your own PRs show the session that made them; the two review tabs show the session that
 reviewed them.
 
-The list is read on every refresh and only answered to a `localhost` / `127.0.0.1` Host,
-with no CORS header, so other sites cannot read it. Served any other way (`file://`, a plain
+The list is read on every refresh and only answered to a loopback Host (`localhost`,
+`127.0.0.1` or `[::1]`), with no CORS header, so other sites cannot read it. Served any other way (`file://`, a plain
 static server) the request fails quietly and the button is simply absent.
 
 ## Collapsing

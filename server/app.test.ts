@@ -1,13 +1,14 @@
 import { request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { SessionsPayload } from "../shared/sessions.ts";
 import { createApp, createHttpServer } from "./app.ts";
 import { SessionIndex } from "./sessions.ts";
 
-const FIXTURES = new URL("./fixtures/", import.meta.url).pathname;
-const INDEX_HTML = new URL("../index.html", import.meta.url).pathname;
+const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
+const INDEX_HTML = fileURLToPath(new URL("../index.html", import.meta.url));
 
 const app = createApp({
     sessions: new SessionIndex(join(FIXTURES, "desktop"), join(FIXTURES, "projects")),
