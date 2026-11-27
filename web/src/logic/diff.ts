@@ -30,6 +30,13 @@ export function needsRawDiff(file: ChangedFile): boolean {
     return file.additions + file.deletions > 0 && !patchIsComplete(file);
 }
 
+/** Past this many changed lines in all, the files' hunks are drawn only as they come near the window. */
+export const LAZY_DIFF_LINES = 2000;
+
+export function drawsLazily(files: readonly Pick<ChangedFile, "additions" | "deletions">[]): boolean {
+    return files.reduce((sum, file) => sum + file.additions + file.deletions, 0) > LAZY_DIFF_LINES;
+}
+
 export function isLargeDiff(file: Pick<ChangedFile, "additions" | "deletions">): boolean {
     return file.additions + file.deletions > LARGE_DIFF_LINES;
 }
@@ -312,4 +319,15 @@ export function placeThreads<T extends ThreadAnchor>(
         side[key] = [...(side[key] ?? []), thread];
     }
     return { byPath, apart };
+}
+
+/** A file's line threads whose lines the drawn hunks leave out, as hiding whitespace can; all of them when none are drawn. */
+export function threadsOffLines<T>(
+    threads: FileThreads<T> | undefined,
+    lines: { LEFT: ReadonlyMap<number, unknown>; RIGHT: ReadonlyMap<number, unknown> } | null,
+): T[] {
+    if (!threads) return [];
+    const off = (side: Record<string, T[]>, drawn: ReadonlyMap<number, unknown> | undefined) =>
+        Object.entries(side).flatMap(([line, list]) => (drawn?.has(Number(line)) ? [] : list));
+    return [...off(threads.old, lines?.LEFT), ...off(threads.new, lines?.RIGHT)];
 }

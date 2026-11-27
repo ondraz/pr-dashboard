@@ -33,10 +33,16 @@ export function When({ at, href }: { at: string; href?: string }) {
     );
 }
 
-/** Scrolls to the next or previous unresolved thread inside `scope` and puts the focus on it; false at either end. */
+/**
+ * Scrolls to the next or previous unresolved thread inside `scope`, or to a file whose threads are not drawn
+ * yet, which draws them, and puts the focus on it; false at either end.
+ */
 export function stepThread(scope: string, direction: 1 | -1): boolean {
-    const target = stepTo(Array.from(document.querySelectorAll(`${scope} .thread:not(.resolved)`)), direction);
-    target?.querySelector("summary")?.focus({ preventScroll: true });
+    const target = stepTo(
+        Array.from(document.querySelectorAll(`${scope} .thread:not(.resolved), ${scope} [data-undrawn-threads]`)),
+        direction,
+    );
+    target?.querySelector<HTMLElement>(":scope > summary, .file-toggle")?.focus({ preventScroll: true });
     return !!target;
 }
 

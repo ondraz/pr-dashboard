@@ -1,9 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { createApp, createHttpServer } from "./app.ts";
 import { AuthService } from "./auth.ts";
-import { authFilePath, readClientId } from "./config.ts";
+import { authFilePath, readClientId, sessionDirs } from "./config.ts";
 import { createDevServer } from "./dev.ts";
-import { CLI_PROJECTS_DIR, DESKTOP_SESSIONS_DIR, SessionIndex } from "./sessions.ts";
+import { SessionIndex } from "./sessions.ts";
 import { TokenStore } from "./tokenStore.ts";
 
 const port = Number(process.env.PORT ?? 6789);
@@ -13,7 +13,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 
 const dev = process.argv.includes("--dev");
-const sessions = new SessionIndex(DESKTOP_SESSIONS_DIR, CLI_PROJECTS_DIR);
+const dirs = sessionDirs();
+const sessions = new SessionIndex(dirs.desktop, dirs.projects);
 const auth = new AuthService({ clientId: readClientId(), store: new TokenStore(authFilePath()) });
 
 const server = dev

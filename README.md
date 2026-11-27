@@ -82,11 +82,16 @@ within 90 days.
   tree's filter narrows the tree and the diffs to the paths that contain every word typed. Each
   file shows its path (both paths for a rename), whether it was added, deleted or renamed, its
   added and removed lines and a link to the file on GitHub, and folds away under its header;
-  **Collapse all** and **Expand all** fold them all. **Unified** and **Split** switch the view, and the
-  choice is remembered. Code is syntax highlighted and changed words within a line are marked, in
+  **Collapse all** and **Expand all** fold them all. **Unified** and **Split** switch the view, and
+  **Hide whitespace** leaves out changes to whitespace alone, as `git diff -w` does; both choices are
+  remembered. GitHub's API has no such option, so the page works it out from the hunks it already has:
+  each hunk's lines are compared again with whitespace ignored, a line whose change was only whitespace
+  shows as context as it is now, a thread on a line left out shows above the file's hunks, and a file
+  with nothing else changed says so. Code is syntax highlighted and changed words within a line are marked, in
   the light or dark theme the system uses. A rename without changes, a mode change, and a binary or
   empty file say so instead of showing hunks. A file with more than 400 changed lines waits for
-  **Load diff**. When GitHub leaves a file's patch out of its file list, or cuts it short, the file's
+  **Load diff**. A diff of more than 2,000 changed lines in all draws each file's hunks only as it comes
+  within a couple of screens of the window, holding its place meanwhile, so a long PR opens at once. When GitHub leaves a file's patch out of its file list, or cuts it short, the file's
   hunks come from the PR's raw diff instead; when GitHub will not send that either, the file links to
   the diff on GitHub.
   **Load context** reads the file at the diff's last commit, after which the lines between and around
@@ -479,6 +484,7 @@ directory's file modes once, then makes three writes (tree, commit, branch) and 
 make test           # codegen, lint, type check, tests and build, as CI runs them on every PR
 make build          # build the React app into web/dist when its sources changed
 make codegen        # regenerate the GraphQL types after changing a query
+make e2e            # the Playwright smoke test of the built app, in headless Chromium
 make format         # format and fix lint findings with Biome
 ```
 
@@ -498,6 +504,15 @@ exactly, and `.npmrc` keeps npm from installing any version less than two weeks 
 parsing, the Copilot verdict, unresolved counts, review standing, filters, the list layout, the
 checks and their annotations, and the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each
 pinned by unit tests.
+
+`e2e/` holds the Playwright smoke test of the main flows in a real browser: the list, opening a PR,
+the Unresolved filter, the diff, a review from a line comment to an approval, the keyboard, hiding
+whitespace and drawing a long diff as it scrolls. It builds the app and serves it with the real server on
+port 6790 (`E2E_PORT` moves it), reading the fictional sessions in `server/fixtures/` (the server takes
+other session directories from `PR_DASHBOARD_DESKTOP_SESSIONS` and `PR_DASHBOARD_CLI_PROJECTS`). The
+sign-in and GitHub's API are answered inside the browser, from fictional data, and a test fails on any
+request it has no answer for, or on any Content Security Policy violation. It needs Playwright's
+Chromium once: `npx playwright install --only-shell chromium`. CI runs it as its own job.
 
 `web/src/github/` is the GitHub API layer the app loads through: Octokit with REST
 pagination, typed GraphQL documents whose types GraphQL Code Generator writes into

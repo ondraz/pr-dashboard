@@ -1,4 +1,4 @@
-.PHONY: serve dev stop build codegen test lint format
+.PHONY: serve dev stop build codegen test e2e lint format
 
 PORT ?= 6789
 URL = http://localhost:$(PORT)/
@@ -47,6 +47,10 @@ test: node_modules/.package-lock.json
 	npm run typecheck
 	npm test
 	npm run build
+
+# the Playwright smoke test of the built app, served on port 6790 with GitHub's API answered inside the browser
+e2e: build
+	npm run e2e
 
 lint: node_modules/.package-lock.json
 	npm run lint

@@ -17,6 +17,7 @@ import {
     rawSectionOf,
     sinceReview,
     splitRawDiff,
+    threadsOffLines,
     treeOrder,
     unifiedDiffText,
 } from "./diff.ts";
@@ -289,5 +290,24 @@ describe("placeThreads", () => {
         );
         expect(placed.apart.map((entry) => entry.id)).toEqual(["outdated", "gone", "lost line"]);
         expect(placed.byPath.size).toBe(0);
+    });
+});
+
+describe("threadsOffLines", () => {
+    const threads = {
+        file: ["file"],
+        old: { "2": ["old 2"], "7": ["old 7"] },
+        new: { "3": ["new 3"], "9": ["new 9"] },
+        count: 5,
+    };
+
+    it("lists the line threads on lines the drawn hunks leave out", () => {
+        const lines = { LEFT: new Map([[2, null]]), RIGHT: new Map([[3, null]]) };
+        expect(threadsOffLines(threads, lines)).toEqual(["old 7", "new 9"]);
+    });
+
+    it("lists every line thread when no hunks are drawn, and nothing without threads", () => {
+        expect(threadsOffLines(threads, null)).toEqual(["old 2", "old 7", "new 3", "new 9"]);
+        expect(threadsOffLines(undefined, null)).toEqual([]);
     });
 });

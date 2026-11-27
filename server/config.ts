@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CLI_PROJECTS_DIR, DESKTOP_SESSIONS_DIR } from "./sessions.ts";
 
 /** The gitignored file at the repository root that holds this machine's settings. */
 export const LOCAL_CONFIG_FILE = fileURLToPath(new URL("../config.local.json", import.meta.url));
@@ -39,4 +40,15 @@ export function authFilePath(env: NodeJS.ProcessEnv = process.env): string {
     if (env.PR_DASHBOARD_AUTH_FILE) return env.PR_DASHBOARD_AUTH_FILE;
     const configHome = env.XDG_CONFIG_HOME || join(homedir(), ".config");
     return join(configHome, "pr-dashboard", "auth.json");
+}
+
+/**
+ * Where the Claude sessions are read from: the desktop app's and Claude Code's own directories, unless
+ * `PR_DASHBOARD_DESKTOP_SESSIONS` or `PR_DASHBOARD_CLI_PROJECTS` point elsewhere, as the browser tests do.
+ */
+export function sessionDirs(env: NodeJS.ProcessEnv = process.env): { desktop: string; projects: string } {
+    return {
+        desktop: env.PR_DASHBOARD_DESKTOP_SESSIONS || DESKTOP_SESSIONS_DIR,
+        projects: env.PR_DASHBOARD_CLI_PROJECTS || CLI_PROJECTS_DIR,
+    };
 }

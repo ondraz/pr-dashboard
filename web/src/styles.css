@@ -2861,3 +2861,21 @@ kbd {
     /* below the file's sticky header */
     scroll-margin-top: 48px;
 }
+
+.files-whitespace {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.file-placeholder {
+    background: repeating-linear-gradient(
+        to bottom,
+        var(--color-bg) 0,
+        var(--color-bg) 19px,
+        var(--color-bg-secondary) 19px,
+        var(--color-bg-secondary) 20px
+    );
+    border-radius: 0 0 6px 6px;
+}

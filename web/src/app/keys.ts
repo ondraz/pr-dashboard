@@ -1,11 +1,13 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { currentIndex, stepIndex } from "../logic/shortcuts.ts";
 
+// Inputs that take no typed text, so a key pressed while one has the focus is still a shortcut.
+const KEYLESS_INPUTS = new Set(["checkbox", "radio", "button", "submit", "reset", "range", "color", "file", "image"]);
+
 export function isTyping(target: EventTarget | null): boolean {
-    return (
-        target instanceof HTMLElement &&
-        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
-    );
+    if (!(target instanceof HTMLElement)) return false;
+    if (target instanceof HTMLInputElement) return !KEYLESS_INPUTS.has(target.type);
+    return target.isContentEditable || ["TEXTAREA", "SELECT"].includes(target.tagName);
 }
 
 /**

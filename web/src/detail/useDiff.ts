@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import {
     type CommitDiff,
@@ -109,4 +109,29 @@ export function useColorScheme(): "light" | "dark" {
         () => (typeof window.matchMedia === "function" && window.matchMedia(DARK).matches ? "dark" : "light"),
         () => "light",
     );
+}
+
+/**
+ * Whether an element came within a couple of screens of the window yet, and the ref that watches it; once
+ * it did it stays drawn. Always true when not `enabled`, or where the browser cannot tell.
+ */
+export function useNearViewport(enabled: boolean): [boolean, (element: Element | null) => (() => void) | undefined] {
+    const [near, setNear] = useState(() => !enabled || typeof IntersectionObserver === "undefined");
+    const observe = useCallback(
+        (element: Element | null) => {
+            if (!element || near) return undefined;
+            const observer = new IntersectionObserver(
+                (entries) => {
+                    if (!entries.some((entry) => entry.isIntersecting)) return;
+                    setNear(true);
+                    observer.disconnect();
+                },
+                { rootMargin: "1500px 0px" },
+            );
+            observer.observe(element);
+            return () => observer.disconnect();
+        },
+        [near],
+    );
+    return [near || !enabled, observe];
 }

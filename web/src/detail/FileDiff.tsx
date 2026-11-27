@@ -15,14 +15,16 @@ import {
     patchIsComplete,
     type RawFileDiff,
     rawSectionOf,
+    threadsOffLines,
     unifiedDiffText,
 } from "../logic/diff.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { type CommentTarget, type DiffSide, lineTarget, type PatchLines, patchLines } from "../logic/review.ts";
+import { hideWhitespace } from "../logic/whitespace.ts";
 import { Annotation } from "./Annotation.tsx";
 import { CommentComposer } from "./CommentComposer.tsx";
 import { Thread } from "./Thread.tsx";
-import { useFileText } from "./useDiff.ts";
+import { useFileText, useNearViewport } from "./useDiff.ts";
 
 export type DiffMode = "unified" | "split";
 
@@ -46,6 +48,10 @@ export interface FileDiffProps {
     /** The commit the diff's new side is at. */
     headOid: string;
     mode: DiffMode;
+    /** Leave out changes to whitespace alone, as `git diff -w` does. */
+    whitespaceHidden: boolean;
+    /** Draw the hunks only once the file comes near the window, for a diff too long to draw at once. */
+    lazy: boolean;
     theme: "light" | "dark";
     collapsed: boolean;
     onToggle: () => void;
@@ -185,6 +191,23 @@ function LineExtrasView({ data, lines }: { data: LineExtras | undefined; lines: 
     );
 }
 
+// About one row of the diff per line of its patch, so the page keeps its length while files are drawn.
+const ROW_HEIGHT = 20;
+const MAX_PLACEHOLDER = 20_000;
+
+/** Where a file's hunks will be drawn once it comes near the window. */
+function FilePlaceholder({ file, loaded }: { file: ChangedFile; loaded: boolean }) {
+    const rows =
+        isLargeDiff(file) && !loaded ? 2 : file.patch ? file.patch.split("\n").length : file.additions + file.deletions;
+    return (
+        <div
+            className="file-placeholder"
+            style={{ height: Math.min(rows * ROW_HEIGHT, MAX_PLACEHOLDER) }}
+            aria-hidden="true"
+        />
+    );
+}
+
 /** One file of the diff: its header, its file-level threads, and its hunks with their threads unless collapsed. */
 export function FileDiff(props: FileDiffProps) {
     const {
@@ -201,14 +224,25 @@ export function FileDiff(props: FileDiffProps) {
         composers,
         onComment,
     } = props;
-    const { viewed, onViewed } = props;
+    const { viewed, onViewed, whitespaceHidden, lazy } = props;
     const [wantsContext, setWantsContext] = useState(false);
-    const body = collapsed ? null : bodyOf(props);
-    const hunks = body && "hunks" in body ? body.hunks : null;
+    const [near, observe] = useNearViewport(lazy);
+    const found = collapsed || !near ? null : bodyOf(props);
+    const changed = found && "hunks" in found ? found.hunks : null;
+    const shown = useMemo(
+        () => (changed !== null && whitespaceHidden ? hideWhitespace(changed) : changed),
+        [changed, whitespaceHidden],
+    );
+    const body: Body | null = shown === "" ? { note: "Only whitespace changed." } : shown ? { hunks: shown } : found;
+    const hunks = shown || null;
     const expandable = hunks !== null && canExpandContext(file);
     const text = useFileText(route, file.path, headOid, expandable && wantsContext);
     const diffFile = useDiffFile(file, hunks, theme, text.data);
     const lines = useMemo(() => (hunks === null ? null : patchLines(hunks)), [hunks]);
+    const offLines = useMemo(
+        () => (whitespaceHidden && changed !== null ? threadsOffLines(threads, lines) : []),
+        [whitespaceHidden, changed, threads, lines],
+    );
     // An annotation is drawn under the line it ends on when the diff shows that line, and above the hunks otherwise.
     const placed = useMemo(() => placeAnnotations(annotations ?? [], lines?.RIGHT ?? new Map()), [annotations, lines]);
     const extendData = useMemo(
@@ -230,7 +264,9 @@ export function FileDiff(props: FileDiffProps) {
     return (
         <section
             id={fileAnchor(file.path)}
+            ref={observe}
             data-path={file.path}
+            data-undrawn-threads={!collapsed && !near && threads?.count ? "" : undefined}
             className={`file-diff${collapsed ? " collapsed" : ""}`}
             aria-label={file.path}
         >
@@ -310,16 +346,20 @@ export function FileDiff(props: FileDiffProps) {
                     </label>
                 )}
             </div>
+            {!collapsed && !near && <FilePlaceholder file={file} loaded={props.loaded} />}
             {body && (
                 <div className="file-body">
                     {text.error && <Note>The file could not be read for context: {text.error.message}</Note>}
-                    {(!!placed.elsewhere.length || !!threads?.file.length || fileComposer) && (
+                    {(!!placed.elsewhere.length || !!threads?.file.length || !!offLines.length || fileComposer) && (
                         <div className="diff-threads file-level">
                             {placed.elsewhere.map((annotation) => (
                                 <Annotation key={annotation.id} annotation={annotation} withPath />
                             ))}
                             {threads?.file.map((thread) => (
                                 <Thread key={thread.id} thread={thread} inDiff />
+                            ))}
+                            {offLines.map((thread) => (
+                                <Thread key={thread.id} thread={thread} />
                             ))}
                             {fileComposer && <CommentComposer target={fileComposer} lines={null} />}
                         </div>

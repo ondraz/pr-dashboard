@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthService, authRoutes, isOwnRequest, REFRESH_MARGIN_MS } from "./auth.ts";
-import { authFilePath, readClientId } from "./config.ts";
+import { authFilePath, readClientId, sessionDirs } from "./config.ts";
 import { GitHubOAuth, OAuthError } from "./oauth.ts";
+import { CLI_PROJECTS_DIR, DESKTOP_SESSIONS_DIR } from "./sessions.ts";
 import { type StoredTokens, TokenStore } from "./tokenStore.ts";
 
 const CLIENT_ID = "Iv23liFAKECLIENTID";
@@ -399,5 +400,12 @@ describe("config", () => {
     it("keeps the tokens under the user's config directory", () => {
         expect(authFilePath({ PR_DASHBOARD_AUTH_FILE: "/x/auth.json" })).toBe("/x/auth.json");
         expect(authFilePath({ XDG_CONFIG_HOME: "/home/dev/.config" })).toBe("/home/dev/.config/pr-dashboard/auth.json");
+    });
+
+    it("reads the sessions from Claude's own directories unless told otherwise", () => {
+        expect(sessionDirs({})).toEqual({ desktop: DESKTOP_SESSIONS_DIR, projects: CLI_PROJECTS_DIR });
+        expect(
+            sessionDirs({ PR_DASHBOARD_DESKTOP_SESSIONS: "/x/desktop", PR_DASHBOARD_CLI_PROJECTS: "/x/projects" }),
+        ).toEqual({ desktop: "/x/desktop", projects: "/x/projects" });
     });
 });
