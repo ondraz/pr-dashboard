@@ -258,6 +258,38 @@ describe("graphql", () => {
         await expect(promise).rejects.toMatchObject({ resource: "graphql", resetAt: 1795770000000 });
     });
 
+    it("pauses on GraphQL's per-minute limit, which it reports as RATE_LIMIT with points left in the hour", async () => {
+        let sent = 0;
+        server.use(
+            http.post("https://api.github.com/graphql", () => {
+                sent++;
+                return HttpResponse.json(
+                    {
+                        errors: [
+                            {
+                                type: "RATE_LIMIT",
+                                code: "graphql_rate_limit",
+                                message: "API rate limit already exceeded for user ID 1.",
+                            },
+                        ],
+                    },
+                    { headers: limitHeaders(3500, "graphql") },
+                );
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        const before = Date.now();
+        const first = await graphql(client, "query { viewer { login } }", {}).catch((e: unknown) => e);
+        expect(first).toBeInstanceOf(RateLimitError);
+        expect(first).toMatchObject({ resource: "secondary" });
+        expect((first as RateLimitError).resetAt).toBeGreaterThanOrEqual(before + 60_000);
+        expect((first as RateLimitError).resetAt).toBeLessThan(before + 120_000);
+        expect(await graphql(client, "query { viewer { login } }", {}).catch((e: unknown) => e)).toBeInstanceOf(
+            RateLimitError,
+        );
+        expect(sent).toBe(1);
+    });
+
     it("never sends a conditional request", async () => {
         const conditional: (string | null)[] = [];
         server.use(

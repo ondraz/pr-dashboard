@@ -4,7 +4,8 @@ import { paginateRest } from "@octokit/plugin-paginate-rest";
 import type { OctokitResponse } from "@octokit/types";
 import { EtagCache } from "./etagCache.ts";
 import {
-    RateLimitError,
+    graphqlRateLimitError,
+    type RateLimitError,
     RateLimits,
     RequestPause,
     rateLimitError,
@@ -105,7 +106,9 @@ export function createGitHubClient({
                 const kept = structuredClone(cached.value);
                 return { ...kept, headers: { ...kept.headers, ...error.response.headers } };
             }
-            const limited = rateLimitError(error.status, error.response.headers, errorMessage(error.response));
+            const limited =
+                graphqlLimitError(url, error.response) ??
+                rateLimitError(error.status, error.response.headers, errorMessage(error.response));
             if (limited) pause.hold(limited);
             throw limited ?? error;
         }
@@ -124,13 +127,14 @@ function isUnanswered(error: unknown): boolean {
     );
 }
 
-/** GraphQL reports an exhausted limit with a 200 and a RATE_LIMITED error; the pause holds it like a refusal. */
-function graphqlLimitError(url: string, response: OctokitResponse<unknown>): RateLimitError | null {
+/** GraphQL can report a limit in the body of any answer, a 200 included; the pause holds it like a refusal. */
+function graphqlLimitError(
+    url: string,
+    response: { data?: unknown; headers: OctokitResponse<unknown>["headers"] },
+): RateLimitError | null {
     if (new URL(url).pathname !== "/graphql") return null;
-    const errors = (response.data as { errors?: { type?: string }[] } | null)?.errors;
-    if (!errors?.some((error) => error.type === "RATE_LIMITED")) return null;
-    const limit = readRateLimit(response.headers);
-    return new RateLimitError("graphql", limit?.resetAt ?? Date.now() + 60_000);
+    const errors = (response.data as { errors?: { type?: string; code?: string }[] } | null)?.errors;
+    return graphqlRateLimitError(errors, response.headers);
 }
 
 /** Sends with the source's current token, and once more with a fresh one if GitHub refuses it. */
@@ -155,6 +159,7 @@ async function withSource<T>(
 interface GraphqlErrorEntry {
     message: string;
     type?: string;
+    code?: string;
 }
 
 /** GraphQL answered with no data at all, or a mutation answered with errors. */
@@ -182,11 +187,9 @@ export async function graphql<TResult, TVariables>(
 ): Promise<GraphqlResult<TResult>> {
     const response = await client.request("POST /graphql", { query: String(document), variables });
     const body = response.data as { data?: TResult | null; errors?: GraphqlErrorEntry[] };
-    // GraphQL reports an exhausted limit with a 200 and an error of this type.
-    if (body.errors?.some((error) => error.type === "RATE_LIMITED")) {
-        const limit = readRateLimit(response.headers);
-        throw new RateLimitError(limit?.resource ?? "graphql", limit?.resetAt ?? Date.now() + 60_000);
-    }
+    // GraphQL can report a limit with a 200.
+    const limited = graphqlRateLimitError(body.errors, response.headers);
+    if (limited) throw limited;
     if (!body.data) throw new GraphqlError(body.errors ?? []);
     return { data: body.data, errors: body.errors ?? [] };
 }

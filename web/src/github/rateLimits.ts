@@ -64,8 +64,31 @@ export function rateLimitError(
     const limit = readRateLimit(headers);
     if (retryAfter !== null) return new RateLimitError(limit?.resource ?? "secondary", now + retryAfter * 1000);
     if (limit && limit.remaining === 0) return new RateLimitError(limit.resource, limit.resetAt);
-    if (/secondary rate limit/i.test(message)) return new RateLimitError("secondary", now + 60_000);
+    if (/secondary rate limit|rate limit (already )?exceeded/i.test(message)) {
+        return new RateLimitError("secondary", now + 60_000);
+    }
     return null;
+}
+
+/**
+ * GraphQL's errors for a request over a limit, which it may send with a 200: typed `RATE_LIMITED`, or
+ * `RATE_LIMIT` with the code `graphql_rate_limit`. With points left in the hour it is the per-minute
+ * secondary limit, which clears in about a minute; without, the hour's budget, until it resets.
+ */
+export function graphqlRateLimitError(
+    errors: readonly { type?: string; code?: string }[] | undefined,
+    headers: Headers,
+    now: number = Date.now(),
+): RateLimitError | null {
+    const limited = errors?.some(
+        (error) => error.type === "RATE_LIMITED" || error.type === "RATE_LIMIT" || error.code === "graphql_rate_limit",
+    );
+    if (!limited) return null;
+    const retryAfter = header(headers, "retry-after");
+    if (retryAfter !== null) return new RateLimitError("secondary", now + retryAfter * 1000);
+    const limit = readRateLimit(headers);
+    if (limit && limit.remaining === 0) return new RateLimitError(limit.resource, limit.resetAt);
+    return new RateLimitError("secondary", now + 60_000);
 }
 
 /** The latest rate-limit state per bucket, for a status line to subscribe to. */
