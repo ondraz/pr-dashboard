@@ -1,0 +1,70 @@
+import type { ReviewThread } from "../github/pullRequest.ts";
+import { External } from "../list/PrRows.tsx";
+import { hunkTail } from "../logic/conversation.ts";
+import { timeAgo } from "../logic/time.ts";
+import { Markdown } from "./Markdown.tsx";
+
+interface Actor {
+    login: string;
+    avatarUrl?: string;
+    url?: string;
+}
+
+export function Who({ actor }: { actor: Actor | null | undefined }) {
+    const login = actor?.login ?? "ghost";
+    return (
+        <span className="who">
+            {actor?.avatarUrl && <img className="avatar" src={actor.avatarUrl} alt="" width={20} height={20} />}
+            <External href={actor?.url ?? `https://github.com/${login}`}>{login}</External>
+        </span>
+    );
+}
+
+export function When({ at, href }: { at: string; href?: string }) {
+    const text = timeAgo(at);
+    return (
+        <time className="when" dateTime={at} title={new Date(at).toLocaleString()}>
+            {href ? <External href={href}>{text}</External> : text}
+        </time>
+    );
+}
+
+/** A review thread: where it is, the diff it was left on unless it sits in a diff already, and every comment. */
+export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDiff?: boolean }) {
+    const comments = (thread.comments.nodes ?? []).filter((comment) => !!comment);
+    const first = comments[0];
+    const line = thread.line ?? thread.originalLine;
+    const start = thread.startLine ?? thread.originalStartLine;
+    const where =
+        thread.subjectType === "FILE" ? "" : line ? `:${start && start !== line ? `${start}-` : ""}${line}` : "";
+    return (
+        <details className="thread" open={!thread.isResolved}>
+            <summary>
+                <code>
+                    {thread.path}
+                    {where}
+                </code>
+                {thread.isOutdated && <span className="thread-tag">Outdated</span>}
+                {thread.isResolved && <span className="thread-tag">Resolved</span>}
+            </summary>
+            {!inDiff && first?.diffHunk && thread.subjectType !== "FILE" && (
+                <pre className="hunk">
+                    {hunkTail(first.diffHunk).map((row, n) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: the lines of one fixed hunk
+                        <div key={n} className={`hunk-${row.kind}`}>
+                            {row.text || " "}
+                        </div>
+                    ))}
+                </pre>
+            )}
+            {comments.map((comment) => (
+                <div key={comment.id} className="thread-comment">
+                    <div className="thread-comment-header">
+                        <Who actor={comment.author} /> <When at={comment.createdAt} href={comment.url} />
+                    </div>
+                    <Markdown html={comment.bodyHTML} />
+                </div>
+            ))}
+        </details>
+    );
+}

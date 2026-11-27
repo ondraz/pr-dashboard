@@ -221,6 +221,7 @@ export const reviewThreadDetailPageFragment = graphql(`
             originalLine
             startLine
             originalStartLine
+            diffSide
             subjectType
             comments(first: 100) {
                 totalCount
@@ -323,6 +324,7 @@ export const pullRequestDetailQuery = graphql(`
                     ...ActorFields
                 }
                 baseRefName
+                baseRefOid
                 headRefName
                 headRepositoryOwner {
                     login
@@ -386,6 +388,12 @@ export const pullRequestDetailQuery = graphql(`
                 changedFiles
                 commits {
                     totalCount
+                }
+                viewerLatestReview {
+                    submittedAt
+                    commit {
+                        oid
+                    }
                 }
                 reviews(last: 20) {
                     nodes {

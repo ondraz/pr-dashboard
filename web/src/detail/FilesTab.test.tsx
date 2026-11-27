@@ -5,7 +5,8 @@ import { graphql as mockGraphql } from "msw/graphql";
 import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { pullRequestFields, pullRequestResponse } from "../github/prFixtures.ts";
+import { pullCommit, pullRequestFields, pullRequestResponse, reviewThread } from "../github/prFixtures.ts";
+import type { PullRequestFields, ReviewThread } from "../github/pullRequest.ts";
 import { pullJson } from "../github/testFixtures.ts";
 import { renderApp } from "../testApp.tsx";
 
@@ -55,8 +56,19 @@ const RAW_DIFF = [
     "",
 ].join("\n");
 
+const BASE = "0a0a0a0a0a0a";
+const FIRST = "aaaaaaa1111";
+const SECOND = "bbbbbbb2222";
+const HEAD = "c0ffee00c0ffee";
+
+// gears.ts at the head commit, around the one line the PR changes.
+const GEARS_AT_HEAD = "const teeth = 12;\nconst ratio = 3;\nexport { teeth, ratio };\n";
+
 let rawDiffRequests = 0;
 let rawDiffStatus = 200;
+let fields: PullRequestFields;
+let threads: ReviewThread[];
+const reads: string[] = [];
 
 const server = setupServer(
     http.get(`${API}/user`, () => HttpResponse.json({ login: "alice" })),
@@ -87,9 +99,53 @@ const server = setupServer(
             },
         }),
     ),
-    github.query("PullRequestDetail", () =>
-        HttpResponse.json(pullRequestResponse(pullRequestFields({ changedFiles: FILES.length }), [], [])),
+    github.query("PullRequestDetail", () => HttpResponse.json(pullRequestResponse(fields, [], threads))),
+    github.query("PullRequestCommits", () =>
+        HttpResponse.json({
+            data: {
+                repository: {
+                    pullRequest: {
+                        commits: {
+                            totalCount: 2,
+                            pageInfo: { hasNextPage: false, endCursor: null },
+                            nodes: [
+                                { commit: pullCommit(FIRST, "Cut the teeth") },
+                                { commit: pullCommit(SECOND, "Oil the axle", "bob") },
+                            ],
+                        },
+                    },
+                },
+            },
+        }),
     ),
+    http.get(`${API}/repos/:owner/:repo/commits/:ref`, ({ params }) => {
+        reads.push(`commit ${params.ref}`);
+        return HttpResponse.json({
+            sha: params.ref,
+            html_url: `https://github.com/acme/widgets/commit/${params.ref}`,
+            author: { login: "bob" },
+            commit: {
+                message: "Oil the axle\n\nIt squeaked.",
+                author: { name: "bob", date: "2026-11-25T09:00:00Z" },
+                committer: { name: "bob", date: "2026-11-25T09:00:00Z" },
+            },
+            files: [restFile("src/axle.ts")],
+        });
+    }),
+    http.get(`${API}/repos/:owner/:repo/compare/:basehead`, ({ params }) => {
+        reads.push(`compare ${params.basehead}`);
+        return HttpResponse.json({
+            status: String(params.basehead).startsWith(FIRST) ? "diverged" : "ahead",
+            files: [restFile("src/gears.ts"), restFile("src/axle.ts")],
+        });
+    }),
+    http.get(`${API}/repos/:owner/:repo/contents/*`, ({ request }) => {
+        const url = new URL(request.url);
+        reads.push(`contents ${url.pathname.split("/contents/")[1]} at ${url.searchParams.get("ref")}`);
+        return HttpResponse.text(GEARS_AT_HEAD, {
+            headers: { "content-type": "application/vnd.github.raw; charset=utf-8" },
+        });
+    }),
 );
 const queryClients: QueryClient[] = [];
 
@@ -122,12 +178,17 @@ beforeAll(() => {
 });
 beforeEach(() => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    // A thread under a line is drawn only once the diff knows how wide it is.
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 800, 20));
     localStorage.clear();
     sessionStorage.clear();
     localStorage.setItem("refresh_interval", "0");
     sessionStorage.setItem("gh_token", "ghp_test");
     rawDiffRequests = 0;
     rawDiffStatus = 200;
+    fields = pullRequestFields({ changedFiles: FILES.length, headRefOid: HEAD, baseRefOid: BASE });
+    threads = [];
+    reads.length = 0;
 });
 afterEach(async () => {
     await waitFor(() => expect(queryClients.every((client) => client.isFetching() === 0)).toBe(true));
@@ -170,7 +231,7 @@ describe("Files changed", () => {
         expect(diffRows(gears)).toEqual([" const teeth = 12;", "-const ratio = 2;", "+const ratio = 3;"]);
         expect(gears.querySelector(".hljs-keyword")?.textContent).toBe("const");
         expect(within(gears).getByRole("link", { name: "View file" }).getAttribute("href")).toBe(
-            "https://github.com/acme/widgets/blob/tip-sha/src/gears.ts",
+            `https://github.com/acme/widgets/blob/${HEAD}/src/gears.ts`,
         );
     });
 
@@ -260,5 +321,131 @@ describe("Files changed", () => {
         expect(document.querySelectorAll(".file-body")).toHaveLength(1);
         fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
         expect(document.querySelectorAll(".file-body")).toHaveLength(5);
+    });
+
+    it("shows each review thread at its line, file threads above the file, and outdated ones apart", async () => {
+        threads = [
+            reviewThread("T_line", "PRR_1", [{ login: "bob", bodyHTML: "<p>Why 3?</p>" }], { line: 2 }),
+            reviewThread("T_file", "PRR_1", [{ login: "bob", bodyHTML: "<p>Rename it back?</p>" }], {
+                path: "docs/guide.md",
+                line: null,
+                originalLine: null,
+                subjectType: "FILE",
+            }),
+            reviewThread("T_old", "PRR_1", [{ login: "carol", bodyHTML: "<p>Was 2 before.</p>" }], {
+                isOutdated: true,
+                line: null,
+            }),
+        ];
+        open("/acme/widgets/pull/12/files");
+        const gears = await fileSection("src/gears.ts");
+        expect(within(gears).getByText("1 thread")).toBeTruthy();
+        const below = await within(gears).findByText("Why 3?");
+        // Under the added line it was left on, without repeating the diff it sits in.
+        const row = below.closest("tr") as HTMLElement;
+        expect(row.getAttribute("data-state")).toBe("extend");
+        expect(row.previousElementSibling?.textContent).toContain("const ratio = 3;");
+        expect(row.querySelector(".hunk")).toBeNull();
+
+        // In split view it sits on its own side, with nothing across from it.
+        fireEvent.click(screen.getByRole("button", { name: "Split" }));
+        const split = await within(gears).findByText("Why 3?");
+        expect(split.closest("td")?.className).toContain("diff-line-extend-new-content");
+
+        const guide = await fileSection("docs/guide.md");
+        expect(within(guide).getByText("Rename it back?")).toBeTruthy();
+        expect(within(guide).getByText("File renamed without changes.")).toBeTruthy();
+
+        const apart = screen.getByRole("region", { name: "Threads outside the diff" });
+        expect(within(apart).getByText("Was 2 before.")).toBeTruthy();
+        expect(within(apart).getByText("Outdated")).toBeTruthy();
+        expect(apart.querySelector(".hunk")).not.toBeNull();
+    });
+
+    it("reads a file at the head commit to show the lines around its changes", async () => {
+        open("/acme/widgets/pull/12/files");
+        const gears = await fileSection("src/gears.ts");
+        const allRows = () =>
+            [...gears.querySelectorAll("tr .diff-line-content-item")].map((cell) => cell.textContent?.trimEnd());
+        expect(allRows()).not.toContain(" export { teeth, ratio };");
+
+        fireEvent.click(within(gears).getByRole("button", { name: "Load context" }));
+        fireEvent.click(await within(gears).findByRole("button", { name: "Show the whole file" }));
+        await waitFor(() => expect(allRows()).toContain(" export { teeth, ratio };"));
+        expect(reads).toEqual([`contents src/gears.ts at ${HEAD}`]);
+        // An added file has no surroundings to read.
+        expect(within(await fileSection("src/table.ts")).queryByRole("button", { name: "Load context" })).toBeNull();
+    });
+
+    it("shows one commit's changes at its GitHub path, with steps to the commits either side", async () => {
+        const { router } = open(`/acme/widgets/pull/12/commits/${SECOND}`);
+        const axle = await fileSection("src/axle.ts");
+        expect(diffRows(axle)).toEqual([" const teeth = 12;", "-const ratio = 2;", "+const ratio = 3;"]);
+        expect(screen.getByRole("heading", { level: 2, name: "Oil the axle" })).toBeTruthy();
+        expect(screen.getByText("It squeaked.")).toBeTruthy();
+        expect(document.querySelector(".commit-header .commit-meta")?.textContent).toContain("commit 2 of 2");
+        expect(screen.getByRole("link", { name: /Commits/ }).getAttribute("aria-current")).toBe("page");
+        expect(document.querySelector(".commit-picker summary")?.textContent).toBe("Commit bbbbbbb ▾");
+        expect(reads).toEqual([`commit ${SECOND}`]);
+
+        fireEvent.click(screen.getByRole("link", { name: "‹ Previous commit" }));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/acme/widgets/pull/12/commits/${FIRST}`));
+        await waitFor(() => expect(reads).toContain(`commit ${FIRST}`));
+    });
+
+    it("picks one commit or a range of them from the menu", async () => {
+        const { router } = open("/acme/widgets/pull/12/files");
+        await fileSection("src/gears.ts");
+        const menu = document.querySelector(".commit-menu") as HTMLElement;
+        await within(menu).findByText("Cut the teeth");
+
+        fireEvent.click(within(menu).getByRole("link", { name: /Oil the axle/ }));
+        await waitFor(() => expect(router.state.location.pathname).toBe(`/acme/widgets/pull/12/files/${SECOND}`));
+        await fileSection("src/axle.ts");
+
+        const range = document.querySelector(".commit-range") as HTMLFormElement;
+        fireEvent.change(within(range).getByLabelText("From"), { target: { value: "0" } });
+        fireEvent.change(within(range).getByLabelText("To"), { target: { value: "1" } });
+        fireEvent.click(within(range).getByRole("button", { name: "Show these commits" }));
+        // From the PR's base, since the range starts at its first commit.
+        await waitFor(() =>
+            expect(router.state.location.pathname).toBe(`/acme/widgets/pull/12/files/${BASE}..${SECOND}`),
+        );
+        await waitFor(() => expect(reads).toContain(`compare ${BASE}...${SECOND}`));
+        expect(document.querySelectorAll(".file-diff")).toHaveLength(2);
+    });
+
+    it("shows the changes since your last review, and says when the branch was rewritten since", async () => {
+        fields = { ...fields, viewerLatestReview: { submittedAt: "2026-11-24T10:00:00Z", commit: { oid: FIRST } } };
+        threads = [reviewThread("T_line", "PRR_1", [{ login: "bob", bodyHTML: "<p>Why 3?</p>" }])];
+        const { router } = open("/acme/widgets/pull/12/files");
+        await fileSection("src/gears.ts");
+        const since = screen.getByRole("link", { name: "Changes since your last review" });
+        expect(since.getAttribute("href")).toBe(`/acme/widgets/pull/12/files/${FIRST}..${HEAD}`);
+
+        fireEvent.click(since);
+        await waitFor(() =>
+            expect(router.state.location.pathname).toBe(`/acme/widgets/pull/12/files/${FIRST}..${HEAD}`),
+        );
+        expect(await screen.findByText(/The branch was rewritten after/)).toBeTruthy();
+        expect(document.querySelector(".commit-picker summary")?.textContent).toBe("Changes since your last review ▾");
+        expect(reads).toContain(`compare ${FIRST}...${HEAD}`);
+        // Thread lines belong to the whole diff, so a range points there instead.
+        expect(screen.queryByText("Why 3?")).toBeNull();
+        expect(screen.getByRole("link", { name: "all changes" }).getAttribute("href")).toBe(
+            "/acme/widgets/pull/12/files",
+        );
+    });
+
+    it("says when nothing changed since your last review", async () => {
+        fields = { ...fields, viewerLatestReview: { submittedAt: "2026-11-24T10:00:00Z", commit: { oid: HEAD } } };
+        open("/acme/widgets/pull/12/files");
+        await fileSection("src/gears.ts");
+        expect(screen.getByText("No new changes since your last review")).toBeTruthy();
+    });
+
+    it("answers a range that is not one with a way back to the list", async () => {
+        open("/acme/widgets/pull/12/files/main..tip");
+        expect(await screen.findByRole("link", { name: "Back to the list" })).toBeTruthy();
     });
 });

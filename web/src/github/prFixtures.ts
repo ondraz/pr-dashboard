@@ -96,6 +96,7 @@ export function reviewThread(
         originalLine: 12,
         startLine: null,
         originalStartLine: null,
+        diffSide: "RIGHT",
         subjectType: "LINE",
         comments: {
             totalCount: comments.length,
@@ -125,6 +126,7 @@ export function pullRequestFields(extra: Partial<PullRequestFields> = {}): PullR
         updatedAt: "2026-11-26T10:00:00Z",
         author: actor("alice"),
         baseRefName: "mid",
+        baseRefOid: "mid-sha",
         headRefName: "tip",
         headRepositoryOwner: { login: "acme" },
         isCrossRepository: false,
@@ -160,6 +162,7 @@ export function pullRequestFields(extra: Partial<PullRequestFields> = {}): PullR
         closingIssuesReferences: { nodes: [] },
         changedFiles: 3,
         commits: { totalCount: 2 },
+        viewerLatestReview: null,
         reviews: { nodes: [] },
         ...extra,
     };

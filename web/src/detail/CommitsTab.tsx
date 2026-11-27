@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { External } from "../list/PrRows.tsx";
 import { timeAgo } from "../logic/time.ts";
 import { useOpenPr } from "./PrContext.tsx";
@@ -43,9 +44,13 @@ export function CommitsTab() {
                                             {author} committed {timeAgo(commit.committedDate)}
                                         </span>
                                     </div>
-                                    <External className="sha" href={`${detail.pr.url}/commits/${commit.oid}`}>
+                                    <Link
+                                        className="sha"
+                                        to="/$owner/$repo/pull/$number/commits/$sha"
+                                        params={{ ...route, sha: commit.oid }}
+                                    >
                                         {commit.abbreviatedOid}
-                                    </External>
+                                    </Link>
                                 </li>
                             );
                         })}
