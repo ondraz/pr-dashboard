@@ -1727,3 +1727,226 @@ a.step-btn:hover {
 .tone-merged .merge-mark {
     color: var(--color-merged);
 }
+
+/* Files changed */
+.detail-container.wide {
+    max-width: none;
+}
+
+.files-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+.files-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+button.step-btn {
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+}
+button.step-btn:hover {
+    border-color: var(--color-text-secondary);
+}
+.segmented {
+    display: inline-flex;
+    border: none;
+}
+.segmented .step-btn {
+    border-radius: 0;
+}
+.segmented .step-btn:first-child {
+    border-radius: 6px 0 0 6px;
+}
+.segmented .step-btn:last-child {
+    border-radius: 0 6px 6px 0;
+    margin-left: -1px;
+}
+.segmented .step-btn[aria-pressed="true"] {
+    background: var(--color-bg-secondary);
+    font-weight: 600;
+}
+.diffstat {
+    display: inline-flex;
+    gap: 6px;
+    font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.diffstat-add {
+    color: var(--color-open);
+}
+.diffstat-del {
+    color: var(--color-closed);
+}
+
+.files-layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .files-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.file-tree {
+    position: sticky;
+    top: 12px;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+    font-size: 13px;
+}
+.file-filter {
+    width: 100%;
+    padding: 5px 8px;
+    margin-bottom: 8px;
+    font: inherit;
+    color: var(--color-text);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+}
+.file-tree ul {
+    list-style: none;
+}
+.file-tree ul ul {
+    padding-left: 12px;
+}
+.tree-dir > summary {
+    cursor: pointer;
+    padding: 2px 4px;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tree-file {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+    padding: 2px 4px;
+    border: none;
+    background: none;
+    color: var(--color-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.tree-file:hover {
+    background: var(--color-bg-secondary);
+}
+.tree-mark {
+    width: 10px;
+    flex-shrink: 0;
+    color: var(--color-text-secondary);
+}
+.status-added .tree-mark {
+    color: var(--color-open);
+}
+.status-removed .tree-mark {
+    color: var(--color-closed);
+}
+
+.file-diffs {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+}
+.file-diff {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    scroll-margin-top: 12px;
+}
+.file-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+    border-radius: 6px 6px 0 0;
+    font-size: 13px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+}
+.file-diff.collapsed .file-header {
+    border-bottom: none;
+    border-radius: 6px;
+}
+.file-toggle {
+    display: inline-flex;
+    border: none;
+    background: none;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 2px;
+}
+.file-toggle svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.15s ease;
+}
+.file-diff.collapsed .file-toggle svg {
+    transform: rotate(-90deg);
+}
+.file-path {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-weight: 600;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.file-previous-path {
+    color: var(--color-text-secondary);
+    font-weight: 400;
+}
+.file-status {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: 20px;
+    padding: 0 6px;
+}
+.file-header .diffstat {
+    margin-left: auto;
+}
+.file-view {
+    font-size: 12px;
+    color: var(--color-link);
+    text-decoration: none;
+}
+.file-body {
+    overflow: hidden;
+    border-radius: 0 0 6px 6px;
+}
+.file-note {
+    padding: 16px;
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-size: 13px;
+}
+.link-btn {
+    border: none;
+    background: none;
+    color: var(--color-link);
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+}
+.link-btn:hover {
+    text-decoration: underline;
+}

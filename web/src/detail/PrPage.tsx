@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, Outlet, useParams } from "@tanstack/react-router";
+import { Link, Outlet, useMatchRoute, useParams } from "@tanstack/react-router";
 import { type ReactNode, useMemo } from "react";
 import { useAuth } from "../app/AuthProvider.tsx";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
@@ -48,9 +48,9 @@ function Tabs({ route, detail }: { route: PrRoute; detail: PullRequestDetail }) 
             <External className="tab-btn" href={`${pr.url}/checks`} title="Opens on GitHub">
                 Checks ↗
             </External>
-            <External className="tab-btn" href={`${pr.url}/files`} title="Opens on GitHub">
-                Files changed <span className="tab-count">{pr.changedFiles}</span> ↗
-            </External>
+            <Link {...tab} to="/$owner/$repo/pull/$number/files" params={route}>
+                Files changed <span className="tab-count">{pr.changedFiles}</span>
+            </Link>
         </nav>
     );
 }
@@ -66,6 +66,8 @@ export function PrPage() {
     const { data, error, isFetching } = query;
     usePullRequestLiveCheck(route, data, isFetching);
     const open = useMemo(() => (data ? { route, detail: data } : null), [route, data]);
+    // The diff takes the whole width, as on GitHub.
+    const wide = !!useMatchRoute()({ to: "/$owner/$repo/pull/$number/files", fuzzy: true });
     // The commits and the stack are read again with the PR.
     const refresh = () => void queryClient.invalidateQueries({ queryKey: prQueryKey(github?.id, route) });
 
@@ -99,12 +101,16 @@ export function PrPage() {
                 {error && <div className="error">Refresh failed: {error.message}</div>}
                 <PrHeader />
                 <Tabs route={route} detail={open.detail} />
-                <div className="detail-body">
-                    <div className="detail-main">
-                        <Outlet />
+                {wide ? (
+                    <Outlet />
+                ) : (
+                    <div className="detail-body">
+                        <div className="detail-main">
+                            <Outlet />
+                        </div>
+                        <Sidebar />
                     </div>
-                    <Sidebar />
-                </div>
+                )}
             </PrContext>
         );
     }
@@ -142,7 +148,7 @@ export function PrPage() {
                     </button>
                 </div>
             </div>
-            <div className="container detail-container">{content}</div>
+            <div className={`container detail-container${wide ? " wide" : ""}`}>{content}</div>
         </>
     );
 }

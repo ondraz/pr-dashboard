@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { DIFF_INLINE_STYLES } from "../shared/diffStyles.ts";
 import { type AuthService, authRoutes } from "./auth.ts";
 import type { SessionIndex } from "./sessions.ts";
 
@@ -15,13 +17,14 @@ export function isServerPath(path: string): boolean {
 }
 
 /**
- * Only the bundle's own scripts and styles run, the page talks to nothing but this server and
- * GitHub's API, and it shows images only from GitHub.
+ * Only the bundle's own scripts and styles run, besides the few fixed inline styles the diff view
+ * marks changed words with; the page talks to nothing but this server and GitHub's API, and it
+ * shows images only from GitHub.
  */
 export const CONTENT_SECURITY_POLICY = [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self'",
+    `style-src 'self' 'unsafe-hashes' ${DIFF_INLINE_STYLES.map((style) => `'sha256-${createHash("sha256").update(style).digest("base64")}'`).join(" ")}`,
     "img-src 'self' https://github.com https://*.githubusercontent.com",
     "connect-src 'self' https://api.github.com",
     "object-src 'none'",
