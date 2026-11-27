@@ -5,7 +5,10 @@ import { graphql as mockGraphql } from "msw/graphql";
 import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DeviceCodePayload, PollPayload, TokenPayload } from "../../../shared/auth.ts";
 import type { PrSession } from "../../../shared/sessions.ts";
+import { AuthProvider } from "../app/AuthProvider.tsx";
+import type { AuthApi } from "../app/auth.ts";
 import { defaultServices, ServicesContext } from "../app/services.tsx";
 import { outstanding, pullJson, review, searchHit, thread } from "../github/testFixtures.ts";
 import { CollapseProvider } from "./collapse.tsx";
@@ -113,13 +116,56 @@ const madeSession: PrSession = {
     lastActivityAt: 1,
 };
 
+/** The local server's sign-in routes, with GitHub's side scripted. */
+class FakeAuthApi implements AuthApi {
+    configured = true;
+    /** The access token the server holds, or null when signed out. */
+    accessToken: string | null = null;
+    /** What the server renews a refused token with; null signs out. */
+    renewed: string | null = null;
+    polls: PollPayload[] = [];
+    readonly refused: string[] = [];
+    signOuts = 0;
+
+    async token(refused?: string): Promise<TokenPayload> {
+        if (refused) {
+            this.refused.push(refused);
+            if (refused === this.accessToken) this.accessToken = this.renewed;
+        }
+        return this.accessToken
+            ? { status: "signed-in", accessToken: this.accessToken, expiresAt: NOW.getTime() + 8 * 3_600_000 }
+            : { status: "signed-out", configured: this.configured };
+    }
+
+    async start(): Promise<DeviceCodePayload> {
+        return {
+            userCode: "WDJB-MJHT",
+            verificationUri: "https://github.com/login/device",
+            expiresAt: NOW.getTime() + 900_000,
+            interval: 0,
+        };
+    }
+
+    async poll(): Promise<PollPayload> {
+        const next = this.polls.shift() ?? { status: "expired" };
+        if (next.status === "signed-in") this.accessToken = "ghu_first";
+        return next;
+    }
+
+    async signOut(): Promise<void> {
+        this.signOuts++;
+        this.accessToken = null;
+    }
+}
+
 const queryClients: QueryClient[] = [];
 
-function renderPage() {
+function renderPage(auth: AuthApi = Object.assign(new FakeAuthApi(), { configured: false })) {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     queryClients.push(queryClient);
     const services = {
         ...defaultServices,
+        auth,
         fetchSessions: async () => ({
             made: new Map([["https://github.com/acme/widgets/pull/12", madeSession]]),
             reviewed: new Map<string, PrSession>(),
@@ -128,9 +174,11 @@ function renderPage() {
     return render(
         <QueryClientProvider client={queryClient}>
             <ServicesContext value={services}>
-                <CollapseProvider>
-                    <ListPage />
-                </CollapseProvider>
+                <AuthProvider>
+                    <CollapseProvider>
+                        <ListPage />
+                    </CollapseProvider>
+                </AuthProvider>
             </ServicesContext>
         </QueryClientProvider>,
     );
@@ -172,7 +220,8 @@ afterAll(() => server.close());
 describe("ListPage without a token", () => {
     it("asks for one, keeps it for the session only unless told otherwise, and loads", async () => {
         renderPage();
-        expect(screen.getByText("Enter a GitHub token to load your open PRs.")).toBeTruthy();
+        expect(await screen.findByText("Enter a GitHub token to load your open PRs.")).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "Sign in with GitHub" })).toBeNull();
 
         fireEvent.change(screen.getByLabelText(/Fine-grained GitHub token/), { target: { value: " ghp_test " } });
         fireEvent.click(screen.getByRole("button", { name: "Save & Load" }));
@@ -189,7 +238,7 @@ describe("ListPage without a token", () => {
 
     it("remembers it across sessions when asked", async () => {
         renderPage();
-        fireEvent.change(screen.getByLabelText(/Fine-grained GitHub token/), { target: { value: "ghp_test" } });
+        fireEvent.change(await screen.findByLabelText(/Fine-grained GitHub token/), { target: { value: "ghp_test" } });
         fireEvent.click(screen.getByRole("checkbox", { name: /Remember across sessions/ }));
         fireEvent.click(screen.getByRole("button", { name: "Save & Load" }));
         await loaded();
@@ -404,5 +453,89 @@ describe("ListPage", () => {
         fireEvent.click(screen.getByRole("button", { name: "5m" }));
         expect(screen.getByRole("button", { name: "5m" }).getAttribute("aria-pressed")).toBe("true");
         expect(localStorage.getItem("refresh_interval")).toBe("300000");
+    });
+});
+
+describe("ListPage with the GitHub App", () => {
+    // The page's own requests carry the app's token; anything else is refused as GitHub would.
+    const acceptOnly = (accepted: string) =>
+        http.get(`${API}/user`, ({ request }) =>
+            request.headers.get("authorization") === `token ${accepted}`
+                ? HttpResponse.json({ login: "alice" })
+                : HttpResponse.json({ message: "Bad credentials" }, { status: 401 }),
+        );
+
+    it("signs in with a code entered on GitHub, and signs out", async () => {
+        server.use(acceptOnly("ghu_first"));
+        const auth = new FakeAuthApi();
+        auth.polls = [{ status: "pending", interval: 0 }, { status: "signed-in" }];
+        renderPage(auth);
+
+        expect(await screen.findByText("Sign in with GitHub, or enter a token, to load your open PRs.")).toBeTruthy();
+        expect(screen.getByLabelText(/Fine-grained GitHub token/)).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "Sign in with GitHub" }));
+
+        expect((await screen.findByText("WDJB-MJHT")).className).toBe("device-code");
+        expect(screen.getByRole("link", { name: "github.com/login/device" }).getAttribute("href")).toBe(
+            "https://github.com/login/device",
+        );
+
+        await loaded();
+        expect(sessionStorage.getItem("gh_token")).toBeNull();
+        expect(localStorage.getItem("gh_token")).toBeNull();
+        expect(screen.queryByRole("button", { name: "Clear token" })).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+        expect(await screen.findByRole("button", { name: "Sign in with GitHub" })).toBeTruthy();
+        expect(auth.signOuts).toBe(1);
+        expect(screen.queryByText("Turn the gears")).toBeNull();
+    });
+
+    it("says why the server could not tell whether the user is signed in", async () => {
+        const auth = new FakeAuthApi();
+        auth.token = () => Promise.reject(new Error("Sign-in failed: fetch failed"));
+        renderPage(auth);
+        expect((await screen.findByRole("alert")).textContent).toBe("Sign-in failed: fetch failed");
+        expect(screen.getByLabelText(/Fine-grained GitHub token/)).toBeTruthy();
+    });
+
+    it("says so when the sign-in is cancelled on GitHub", async () => {
+        const auth = new FakeAuthApi();
+        auth.polls = [{ status: "denied" }];
+        renderPage(auth);
+        fireEvent.click(await screen.findByRole("button", { name: "Sign in with GitHub" }));
+        expect((await screen.findByRole("alert")).textContent).toBe("Sign-in was cancelled on GitHub.");
+        expect(screen.getByRole("button", { name: "Sign in with GitHub" })).toBeTruthy();
+    });
+
+    it("uses the app's token over a pasted one, and asks for a fresh one on a 401", async () => {
+        server.use(acceptOnly("ghu_second"));
+        sessionStorage.setItem("gh_token", "ghp_test");
+        const auth = new FakeAuthApi();
+        auth.accessToken = "ghu_first";
+        auth.renewed = "ghu_second";
+        renderPage(auth);
+
+        await loaded();
+        expect(auth.refused).toEqual(["ghu_first"]);
+        expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    });
+
+    it("falls back to the pasted token once the server can no longer renew the app's", async () => {
+        server.use(
+            http.get(`${API}/user`, ({ request }) =>
+                request.headers.get("authorization") === "token ghp_test"
+                    ? HttpResponse.json({ login: "alice" })
+                    : HttpResponse.json({ message: "Bad credentials" }, { status: 401 }),
+            ),
+        );
+        sessionStorage.setItem("gh_token", "ghp_test");
+        const auth = new FakeAuthApi();
+        auth.accessToken = "ghu_revoked";
+        renderPage(auth);
+
+        await loaded();
+        expect(auth.refused).toEqual(["ghu_revoked"]);
+        expect(screen.getByRole("button", { name: "Clear token" })).toBeTruthy();
     });
 });

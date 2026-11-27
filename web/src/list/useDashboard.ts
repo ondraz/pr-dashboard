@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Credentials } from "../app/AuthProvider.tsx";
 import { useServices } from "../app/services.tsx";
 import { readChangeFingerprint } from "../github/changeCheck.ts";
 import type { GitHubClient } from "../github/client.ts";
@@ -14,7 +15,7 @@ export interface DashboardView extends DashboardData {
     sessions: PrSessions;
 }
 
-interface TokenSession {
+interface GitHubSession {
     id: number;
     client: GitHubClient;
     fingerprint: ChangeFingerprint;
@@ -24,22 +25,24 @@ interface TokenSession {
 let nextSessionId = 0;
 
 /**
- * The three tabs' data for one token, refreshed as `mode` says: on a fixed interval, whenever the
+ * The three tabs' data for one set of credentials, refreshed as `mode` says: on a fixed interval, whenever the
  * tab becomes visible ("on access"), or in live mode whenever the cheap change check sees a change.
  */
-export function useDashboard(token: string | null, mode: RefreshMode) {
+export function useDashboard(credentials: Credentials | null, mode: RefreshMode) {
     const services = useServices();
-    const session = useMemo<TokenSession | null>(
+    const session = useMemo<GitHubSession | null>(
         () =>
-            token
+            credentials
                 ? {
                       id: nextSessionId++,
-                      client: services.createClient(token),
+                      client: services.createClient(
+                          credentials.kind === "app" ? credentials.source : credentials.token,
+                      ),
                       fingerprint: new ChangeFingerprint(),
                       login: null,
                   }
                 : null,
-        [token, services],
+        [credentials, services],
     );
     const [progress, setProgress] = useState<string | null>(null);
     const live = mode === "live";
@@ -49,7 +52,7 @@ export function useDashboard(token: string | null, mode: RefreshMode) {
         queryKey: ["dashboard", session?.id],
         enabled: !!session,
         queryFn: async (): Promise<DashboardView> => {
-            if (!session) throw new Error("No token");
+            if (!session) throw new Error("Not signed in");
             setProgress("Refreshing…");
             if (!session.login) {
                 setProgress("Checking account…");

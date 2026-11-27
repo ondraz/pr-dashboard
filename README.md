@@ -5,9 +5,9 @@ have access to, grouped by repository. Like [GitHub Pulls](https://github.com/pu
 but grouped per repo, aware of stacked PRs, and able to show one change spread over
 several repositories as a single set.
 
-A React app that talks to the GitHub API straight from the browser with a token you provide,
-served by a small local Node server that also tells it which Claude session made each PR.
-GitHub data never passes through the server.
+A React app that talks to the GitHub API straight from the browser, served by a small local Node
+server that signs you in through the dashboard's GitHub App and tells the page which Claude session
+made each PR. GitHub data never passes through the server.
 
 ## Features
 
@@ -75,8 +75,7 @@ cross-repo set gets a badge naming the key and the number of repositories; click
 switches to **By feature** and jumps to the group. **By feature** puts the cross-repo sets
 first, split by repository inside, and collects everything else under Single-repo work.
 
-The grouping is display only. It does not gate merges, and the dashboard never writes to
-GitHub - the token is read-only.
+The grouping is display only and does not gate merges.
 
 ## Unresolved comments
 
@@ -107,6 +106,55 @@ rest of the dashboard is unaffected, and the reason is logged to the browser con
 
 ## Setup
 
+There are two ways to sign in. The GitHub App is the one to use; a fine-grained token is the
+read-only fallback for anyone the app does not cover.
+
+### Sign in with the GitHub App
+
+Once the app is configured (below), **Sign in with GitHub** shows a code to enter at
+[github.com/login/device](https://github.com/login/device). The local server runs GitHub's device
+flow, keeps the refresh token in `~/.config/pr-dashboard/auth.json` (readable only by you;
+`$XDG_CONFIG_HOME` or `PR_DASHBOARD_AUTH_FILE` move it), and hands the page only the access token,
+which expires after 8 hours. The page holds it in memory, asks the server for it on every load,
+and asks again shortly before it expires or when GitHub answers 401; the server refreshes it from
+the refresh token, which lasts six months and is renewed by every refresh, so you sign in again
+only after six months without using the dashboard. **Sign out** deletes the file. GitHub keeps the
+authorization until you revoke it under
+[Settings > Applications > Authorized GitHub Apps](https://github.com/settings/apps/authorizations).
+
+The app only reaches repositories it is installed on. A PR anywhere else (a personal repository,
+an open-source contribution) drops out of the list. A fine-grained token still reaches those, but
+only while you are signed out of the app, since the app's token wins when both are there. While a
+saved token loads the list, the sign-in form stays hidden, so to move from a token to the app click
+**Clear token** first.
+
+**Registering the app** is done once, by an owner of the organization:
+
+1. Under the organization's **Settings > Developer settings > GitHub Apps**, click
+   **New GitHub App**
+2. Name it (e.g. `pr-dashboard`) and set **Homepage URL** to this repository. Leave **Callback
+   URL** empty, keep **Expire user authorization tokens** on, and tick **Enable Device Flow**
+3. Under **Webhook**, untick **Active**
+4. Under **Repository permissions**, set **Pull requests** and **Contents** to **Read and
+   write**, and **Checks**, **Commit statuses** and **Actions** to **Read-only**. The write
+   permissions are for the review and merge actions the dashboard is gaining; nothing writes yet
+5. Under **Where can this GitHub App be installed?**, pick **Only on this account**, then
+   **Create GitHub App**
+6. Under **Install App**, install it on the organization and choose the repositories to include
+7. Share the **Client ID** from the app's **General** page. It is not a secret, and the app needs
+   no client secret or private key: the device flow works without one
+
+**Configuring it** on each machine: put the client id in `config.local.json` at the root of this
+repository (gitignored), or in `PR_DASHBOARD_CLIENT_ID`, which wins, and restart the server.
+
+```json
+{ "githubAppClientId": "Iv23li..." }
+```
+
+Without a client id the page offers only the token below.
+
+### Fine-grained token (read-only fallback)
+
 1. Go to [GitHub fine-grained tokens](https://github.com/settings/personal-access-tokens/new)
 2. Set **Token name** (e.g. `pr-dashboard`) and **Expiration** (max 366 days)
 3. Under **Resource owner**, select yourself or the organization whose PRs you want to see
@@ -118,7 +166,8 @@ rest of the dashboard is unaffected, and the reason is logged to the browser con
 
 Tick **Remember across sessions** to keep the token in `localStorage`; otherwise it lives
 in `sessionStorage` and is gone when the tab closes. **Clear token** removes it. The token
-never leaves the browser except in requests to `api.github.com`.
+never leaves the browser except in requests to `api.github.com`. When you are signed in through
+the app as well, the app's token is used.
 
 ## Running
 
@@ -133,7 +182,8 @@ make stop           # stop the server
 make dev            # the same server in the foreground, with Vite for hot reload
 ```
 
-The server binds to `127.0.0.1` and serves the built app and `/sessions.json`. A path without a
+The server binds to `127.0.0.1` and serves the built app, `/sessions.json` and the sign-in routes
+under `/auth/`. A path without a
 file name gets the app's page, so a link into the app survives a reload; any other path that is
 not a file of the build is a 404. The page comes with a strict Content Security Policy: only the
 bundle's own scripts and styles run, it connects only to the server and `api.github.com`, and it
@@ -207,7 +257,11 @@ make format         # format and fix lint findings with Biome
 ```
 
 `server/` holds the local server (Hono on `node:http`, run by Node without a build), and
-`shared/` the types of the payloads it answers. Tests run with Vitest; the session parsing is
+`shared/` the types of the payloads it answers. Its sign-in routes (`/auth/token`, `/auth/start`,
+`/auth/poll`, `/auth/sign-out`) are POST only, answer only a loopback `Host`, and refuse any
+request whose `Origin` or `Sec-Fetch-Site` says it comes from another site, so no other page can
+start a sign-in, sign you out or read the token; their tests run against a scripted stand-in for
+GitHub's sign-in endpoints. Tests run with Vitest; the session parsing is
 pinned against the fictional session files in `server/fixtures/`. Dependencies are pinned
 exactly, and `.npmrc` keeps npm from installing any version less than two weeks old.
 

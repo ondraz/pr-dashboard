@@ -9,8 +9,17 @@ const GitHubOctokit = Octokit.plugin(paginateRest);
 
 export type GitHubClient = InstanceType<typeof GitHubOctokit>;
 
+/** Access tokens that expire and are renewed, as the GitHub App issues them. */
+export interface AccessTokenSource {
+    /** A token that should still be good. Rejects once the user is signed out. */
+    current(): Promise<string>;
+    /** GitHub answered `token` with a 401: a fresh token to retry with, or null when signed out. */
+    refused(token: string): Promise<string | null>;
+}
+
 export interface GitHubClientOptions {
-    token: string;
+    /** A pasted token, or the GitHub App's tokens, asked for before every request. */
+    token: string | AccessTokenSource;
     /** Collects the rate-limit state every response reports. */
     rateLimits?: RateLimits;
     /** Defaults to the global `fetch`; tests pass their own. */
@@ -46,8 +55,9 @@ export function createGitHubClient({
     fetch: fetchImpl,
     etagCapacity,
 }: GitHubClientOptions): GitHubClient {
+    const source = typeof token === "string" ? null : token;
     const octokit = new GitHubOctokit({
-        auth: token,
+        ...(source ? {} : { auth: token }),
         request: {
             fetch: (url: string | URL, init?: RequestInit) =>
                 (fetchImpl ?? globalThis.fetch)(url, { ...init, cache: "no-store" }),
@@ -63,7 +73,9 @@ export function createGitHubClient({
         // Inner hooks (token auth) are bound to this same options object, so the header has to go on it.
         if (cached) options.headers["if-none-match"] = cached.etag;
         try {
-            const response = await request(options);
+            const response = source
+                ? await withSource(source, () => request(options), options.headers)
+                : await request(options);
             rateLimits.record(response.headers);
             const etag = response.headers.etag;
             // Pagination rewrites a search response in place, so the cache keeps its own copy.
@@ -81,6 +93,25 @@ export function createGitHubClient({
     });
 
     return octokit;
+}
+
+/** Sends with the source's current token, and once more with a fresh one if GitHub refuses it. */
+async function withSource<T>(
+    source: AccessTokenSource,
+    send: () => T | Promise<T>,
+    headers: Record<string, unknown>,
+): Promise<T> {
+    const token = await source.current();
+    headers.authorization = `token ${token}`;
+    try {
+        return await send();
+    } catch (error) {
+        if (!isErrorWithResponse(error) || error.status !== 401) throw error;
+        const fresh = await source.refused(token);
+        if (!fresh) throw error;
+        headers.authorization = `token ${fresh}`;
+        return send();
+    }
 }
 
 /** GraphQL answered with no data at all. */

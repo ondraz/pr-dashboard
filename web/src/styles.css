@@ -342,6 +342,62 @@ body {
     opacity: 0.9;
 }
 
+.setup button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.setup .secondary-btn {
+    background: none;
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    font-weight: 400;
+}
+
+.setup-hint {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+}
+
+.device-code-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.device-code-row .setup-hint {
+    margin-bottom: 0;
+}
+
+.device-code {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    padding: 4px 12px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    user-select: all;
+}
+
+.setup-or {
+    margin: 20px 0 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.setup-error {
+    margin: 12px 0 0;
+}
+
+.setup > .setup-error:first-child {
+    margin: 0 0 16px;
+}
+
 .remember-label {
     display: flex;
     align-items: center;

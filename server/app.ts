@@ -4,12 +4,15 @@ import { join } from "node:path";
 import { getRequestListener } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
+import { type AuthService, authRoutes } from "./auth.ts";
 import type { SessionIndex } from "./sessions.ts";
 
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /** The paths the server answers itself; everything else is the app. */
-export const SERVER_PATHS: ReadonlySet<string> = new Set(["/sessions.json"]);
+export function isServerPath(path: string): boolean {
+    return path === "/sessions.json" || path.startsWith("/auth/");
+}
 
 /**
  * Only the bundle's own scripts and styles run, the page talks to nothing but this server and
@@ -29,6 +32,7 @@ export const CONTENT_SECURITY_POLICY = [
 
 export interface AppOptions {
     sessions: SessionIndex;
+    auth: AuthService;
     /** The built app (`web/dist`), or null under `make dev`, where Vite serves it. */
     webRoot: string | null;
 }
@@ -37,7 +41,7 @@ export interface AppOptions {
  * The local server's routes. It answers only a loopback `Host`, so a site that rebinds its own
  * name to 127.0.0.1 gets nothing, and sends no CORS headers, so no other origin can read a response.
  */
-export function createApp({ sessions, webRoot }: AppOptions): Hono {
+export function createApp({ sessions, auth, webRoot }: AppOptions): Hono {
     const app = new Hono();
 
     app.use(async (c, next) => {
@@ -49,6 +53,8 @@ export function createApp({ sessions, webRoot }: AppOptions): Hono {
         c.header("Cache-Control", "no-store");
         return c.json(await sessions.read());
     });
+
+    app.route("/auth", authRoutes(auth));
 
     if (webRoot) serveBuild(app, webRoot);
     return app;
