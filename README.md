@@ -195,7 +195,8 @@ lags behind. A check run finishing does not count as a change, as the dashboard 
 ## Development
 
 ```bash
-make test           # lint, type check and tests, as CI runs them on every PR
+make test           # lint, type check, tests and build, as CI runs them on every PR
+make build          # build the React app into web/dist when its sources changed
 make format         # format and fix lint findings with Biome
 ```
 
@@ -203,6 +204,12 @@ make format         # format and fix lint findings with Biome
 `shared/` the types of the payloads it answers. Tests run with Vitest; the session parsing is
 pinned against the fictional session files in `server/fixtures/`. Dependencies are pinned
 exactly, and `.npmrc` keeps npm from installing any version less than two weeks old.
+
+`web/` is the React app (Vite, TanStack Query and Router) that replaces `index.html`, which the
+server still serves until the app reaches parity; see [the plan](docs/review-app-plan.md).
+`web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
+parsing, the Copilot verdict, unresolved counts, review standing, filters and the list layout -
+as plain TypeScript without React or I/O, each pinned by unit tests.
 
 ## License
 

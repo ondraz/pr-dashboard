@@ -1,10 +1,18 @@
-.PHONY: serve stop test lint format
+.PHONY: serve stop build test lint format
 
 PORT ?= 6789
 URL = http://localhost:$(PORT)/
 
 node_modules/.package-lock.json: package.json package-lock.json
 	npm ci
+
+WEB_SOURCES = $(shell find web -type f -not -path 'web/dist/*') $(wildcard shared/*.ts) vite.config.ts
+
+web/dist/index.html: node_modules/.package-lock.json $(WEB_SOURCES)
+	npm run build
+
+# build the React app into web/dist when its sources changed
+build: web/dist/index.html
 
 # serve the dashboard on localhost (a real origin isolates the stored token from other local files,
 # and the server also tells the page which Claude session made or reviewed each PR)
@@ -24,11 +32,12 @@ stop:
 		echo "No server running on port $(PORT)"; \
 	fi
 
-# lint, type check and tests, as CI runs them
+# lint, type check, tests and build, as CI runs them
 test: node_modules/.package-lock.json
 	npm run lint
 	npm run typecheck
 	npm test
+	npm run build
 
 lint: node_modules/.package-lock.json
 	npm run lint
