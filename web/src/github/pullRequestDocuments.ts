@@ -245,6 +245,7 @@ export const reviewThreadDetailPageFragment = graphql(`
             startLine
             originalStartLine
             diffSide
+            startDiffSide
             subjectType
             viewerCanReply
             viewerCanResolve

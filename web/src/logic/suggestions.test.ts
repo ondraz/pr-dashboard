@@ -47,6 +47,7 @@ describe("suggestionOf", () => {
         path: "src/gears.ts",
         subjectType: "LINE",
         diffSide: "RIGHT",
+        startDiffSide: "RIGHT",
         line: 3,
         startLine: 2,
         isOutdated: false,
@@ -63,13 +64,14 @@ describe("suggestionOf", () => {
             line: 3,
             lines: ["const ratio = 4;"],
         });
-        expect(suggestionOf({ ...source, startLine: null })?.startLine).toBe(3);
+        expect(suggestionOf({ ...source, startLine: null, startDiffSide: null })?.startLine).toBe(3);
     });
 
     it("leaves out what GitHub would not commit", () => {
         expect(suggestionOf({ ...source, isOutdated: true, line: null })).toBeNull();
         expect(suggestionOf({ ...source, isResolved: true })).toBeNull();
         expect(suggestionOf({ ...source, diffSide: "LEFT" })).toBeNull();
+        expect(suggestionOf({ ...source, startDiffSide: "LEFT" })).toBeNull();
         expect(suggestionOf({ ...source, subjectType: "FILE" })).toBeNull();
         expect(suggestionOf({ ...source, comment: { ...source.comment, state: "PENDING" } })).toBeNull();
         expect(suggestionOf({ ...source, comment: { ...source.comment, body: "No change here" } })).toBeNull();

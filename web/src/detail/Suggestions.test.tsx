@@ -218,6 +218,17 @@ describe("committing suggestions", () => {
         expect(localStorage.getItem(BATCH)).toBeNull();
     });
 
+    it("drops a batched suggestion whose thread was resolved since, and commits the rest alone again", async () => {
+        threads = [suggesting("T_1", 3, 2, ["x"], { isResolved: true }), suggesting("T_2", 4, null, ["y"])];
+        localStorage.setItem(BATCH, JSON.stringify(["T_1_c0"]));
+        open();
+        const thread = await threadAt(":4");
+        expect(within(thread).getByRole("button", { name: "Commit suggestion" })).toBeTruthy();
+        expect(screen.queryByRole("region", { name: "Suggestion batch" })).toBeNull();
+        fireEvent.click(within(thread).getByRole("button", { name: "Add suggestion to batch" }));
+        expect(localStorage.getItem(BATCH)).toBe(JSON.stringify(["T_2_c0"]));
+    });
+
     it("leaves the branch alone and keeps the batch when someone pushed meanwhile", async () => {
         refUpdate = { status: 422, message: "Update is not a fast forward" };
         localStorage.setItem(BATCH, JSON.stringify(["T_1_c0"]));

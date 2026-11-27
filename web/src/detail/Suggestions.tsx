@@ -24,6 +24,7 @@ function useCommittable(): ReadonlyMap<string, Suggestion> {
                     path: thread.path,
                     subjectType: thread.subjectType,
                     diffSide: thread.diffSide,
+                    startDiffSide: thread.startDiffSide ?? null,
                     line: thread.line ?? null,
                     startLine: thread.startLine ?? null,
                     isOutdated: thread.isOutdated,
@@ -37,18 +38,23 @@ function useCommittable(): ReadonlyMap<string, Suggestion> {
     }, [allowed, threads]);
 }
 
-/** The suggestions gathered to commit together, kept like a draft so a reload keeps the batch. */
-function useBatch() {
+/**
+ * The suggestions gathered to commit together, kept like a draft so a reload keeps the batch. One that can no
+ * longer be committed (its thread resolved or outdated) drops out of it.
+ */
+function useBatch(committable: ReadonlyMap<string, Suggestion>) {
     const { route } = useOpenPr();
     const [stored, store, clear] = useDraft(draftPrefix(route) + SUGGESTIONS_SLOT);
     const ids = useMemo<string[]>(() => {
         try {
             const parsed: unknown = JSON.parse(stored ?? "[]");
-            return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
+            return Array.isArray(parsed)
+                ? parsed.filter((id): id is string => typeof id === "string" && committable.has(id))
+                : [];
         } catch {
             return [];
         }
-    }, [stored]);
+    }, [stored, committable]);
     const save = (next: string[]) => (next.length ? store(JSON.stringify(next)) : clear());
     return {
         ids,
@@ -114,8 +120,9 @@ function CommitForm({
 
 /** Under a comment that suggests a change: commit it alone, or gather it into the batch. */
 export function SuggestionActions({ commentId }: { commentId: string }) {
-    const suggestion = useCommittable().get(commentId);
-    const batch = useBatch();
+    const committable = useCommittable();
+    const suggestion = committable.get(commentId);
+    const batch = useBatch(committable);
     const [committing, setCommitting] = useState(false);
     if (!suggestion) return null;
     if (committing) {
@@ -144,7 +151,7 @@ export function SuggestionActions({ commentId }: { commentId: string }) {
 /** The batch, wherever the PR's page is: how many suggestions it holds, and committing them as one commit. */
 export function SuggestionBatch() {
     const committable = useCommittable();
-    const batch = useBatch();
+    const batch = useBatch(committable);
     const [committing, setCommitting] = useState(false);
     const suggestions = batch.ids.flatMap((id) => committable.get(id) ?? []);
     if (!suggestions.length) return null;

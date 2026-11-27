@@ -38,6 +38,8 @@ export interface SuggestionSource {
     path: string;
     subjectType: string;
     diffSide: string;
+    /** The side of a range's first line; GitHub has none for a single line. */
+    startDiffSide: string | null;
     line: number | null;
     startLine: number | null;
     isOutdated: boolean;
@@ -47,10 +49,12 @@ export interface SuggestionSource {
 
 /**
  * The comment's suggestion, when GitHub would let it be committed: a submitted comment on lines of the new side
- * that still stand in the head commit, in a thread nobody resolved.
+ * (all of them: a range that starts on a removed line has its start numbered in the old file) that still stand
+ * in the head commit, in a thread nobody resolved.
  */
 export function suggestionOf(source: SuggestionSource): Suggestion | null {
     if (source.subjectType !== "LINE" || source.diffSide !== "RIGHT" || source.line === null) return null;
+    if (source.startDiffSide !== null && source.startDiffSide !== "RIGHT") return null;
     if (source.isOutdated || source.isResolved || source.comment.state === "PENDING") return null;
     const lines = suggestedLines(source.comment.body);
     if (lines === null) return null;

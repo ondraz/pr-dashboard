@@ -640,7 +640,7 @@ export type TimelinePageFragment = { pageInfo: { hasNextPage: boolean, endCursor
     | { __typename: 'UserBlockedEvent' }
    | null> | null };
 
-export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
+export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, startDiffSide: DiffSide | null, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
@@ -702,7 +702,7 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
             | { login: string }
             | { login: string }
             | { login: string }
-           | null } | null> | null } | null, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
+           | null } | null> | null } | null, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, startDiffSide: DiffSide | null, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
@@ -1066,7 +1066,7 @@ export type ReviewThreadDetailPageQueryVariables = Exact<{
 }>;
 
 
-export type ReviewThreadDetailPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
+export type ReviewThreadDetailPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, startDiffSide: DiffSide | null, subjectType: PullRequestReviewThreadSubjectType, viewerCanReply: boolean, viewerCanResolve: boolean, viewerCanUnresolve: boolean, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, body: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, viewerCanUpdate: boolean, viewerCanDelete: boolean, viewerCanReact: boolean, author:
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
@@ -1662,6 +1662,7 @@ export const ReviewThreadDetailPageFragmentDoc = new TypedDocumentString(`
     startLine
     originalStartLine
     diffSide
+    startDiffSide
     subjectType
     viewerCanReply
     viewerCanResolve
@@ -2430,6 +2431,7 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
     startLine
     originalStartLine
     diffSide
+    startDiffSide
     subjectType
     viewerCanReply
     viewerCanResolve
@@ -2800,6 +2802,7 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
     startLine
     originalStartLine
     diffSide
+    startDiffSide
     subjectType
     viewerCanReply
     viewerCanResolve

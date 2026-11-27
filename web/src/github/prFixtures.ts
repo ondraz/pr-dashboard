@@ -106,6 +106,7 @@ export function reviewThread(
         startLine: null,
         originalStartLine: null,
         diffSide: "RIGHT",
+        startDiffSide: null,
         subjectType: "LINE",
         viewerCanReply: true,
         viewerCanResolve: true,
