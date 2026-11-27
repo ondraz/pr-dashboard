@@ -241,18 +241,16 @@ make dev            # the same server in the foreground, with Vite for hot reloa
 ```
 
 The server binds to `127.0.0.1` and serves the built app, `/sessions.json` and the sign-in routes
-under `/auth/`. A path without a
-file name, or ending in a range of commits (`<sha>..<sha>`), gets the app's page, so a link into the
-app survives a reload; any other path that is
-not a file of the build is a 404. The page comes with a strict Content Security Policy: only the
-bundle's own scripts and styles run, it connects only to the server and `api.github.com`, and it
-shows images only from GitHub. The one exception is the handful of fixed inline styles the diff
-view marks changed words with, which the policy allows by their hashes (listed in
-`shared/diffStyles.ts`, and pinned against the library by a test). Every library is bundled at build
-time; nothing loads from a CDN. The diff view and its syntax highlighter load as a separate bundle
-the first time a diff opens.
-Under `make dev` Vite serves the page instead, without that policy, since its hot reload runs
-inline scripts.
+under `/auth/`. A path without a file name, or ending in a range of commits (`<sha>..<sha>`), gets
+the app's page, so a link into the app survives a reload; any other path that is not a file of the
+build is a 404. The page comes with a strict Content Security Policy: only the bundle's own scripts
+and styles run, it connects only to the server and `api.github.com`, and it shows images only from
+GitHub. The one exception is the handful of fixed inline styles the diff view marks changed words
+with, which the policy allows by their hashes (listed in `shared/diffStyles.ts`, and pinned against
+the library by a test). Every library is bundled at build time; nothing loads from a CDN. The diff
+view and its syntax highlighter load as a separate bundle the first time a diff opens. Under
+`make dev` Vite serves the page instead, without that policy, since its hot reload runs inline
+scripts.
 
 The app needs the server: opening the build over `file://` does not work.
 
@@ -310,17 +308,17 @@ holds and each one's last update, head commit, mergeability, review decision, dr
 merge-queue position; a new or closed PR can take a minute to show, since GitHub's search index
 lags behind. A check run finishing does not count as a change, as the dashboard shows no CI.
 
-Opening a PR costs one GraphQL query for its header, sidebar, merge box, description, timeline
-and review threads, and one more per further 100 timeline events or threads (up to 1,000 of
-each). The Commits tab is one more query per 100 commits. The Files changed tab is one REST read
-per 100 changed files (GitHub lists up to 3,000), read again with the PR, plus the PR's raw diff once
-per head commit when some file's patch is missing or cut. A single commit's diff is one REST read
-per 300 files and a range one comparison (GitHub lists up to 300 of its files); neither is read again
+Opening a PR costs one GraphQL query for its header, sidebar, merge box, description, timeline and
+review threads, and one more per further 100 timeline events or threads (up to 1,000 of each). The
+Commits tab is one more query per 100 commits. The Files changed tab is one REST read per 100
+changed files (GitHub lists up to 3,000), read again with the PR, plus the PR's raw diff once per
+head commit when some file's patch is missing or cut. A single commit's diff is one REST read per
+300 files and a range one comparison (GitHub lists up to 300 of its files); neither is read again
 once loaded. The menu above the diff reads the commit list as the Commits tab does, sharing it.
-**Load context** is one read of the file, once per file and commit. The Stack panel costs a REST read of the
-PR, one lookup per PR below it and one per level above it, at most 5 each way; with ETags these
-cost nothing once unchanged. In live mode an open PR adds its own change check, one more point
-every 15 seconds, so about 480 points an hour with the list's.
+**Load context** is one read of the file, once per file and commit. The Stack panel costs a REST
+read of the PR, one lookup per PR below it and one per level above it, at most 5 each way; with
+ETags these cost nothing once unchanged. In live mode an open PR adds its own change check, one more
+point every 15 seconds, so about 480 points an hour with the list's.
 
 ## Development
 
@@ -345,7 +343,8 @@ exactly, and `.npmrc` keeps npm from installing any version less than two weeks 
 `web/src/detail/` the PR page; the list's data is loaded above both, so it survives opening a PR.
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
 parsing, the Copilot verdict, unresolved counts, review standing, filters, the list layout, and
-the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each pinned by unit tests.
+the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each
+pinned by unit tests.
 
 `web/src/github/` is the GitHub API layer the app loads through: Octokit with REST
 pagination, typed GraphQL documents whose types GraphQL Code Generator writes into
