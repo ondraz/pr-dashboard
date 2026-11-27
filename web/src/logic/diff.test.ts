@@ -234,8 +234,11 @@ describe("diff specs", () => {
     });
 
     it("compares from the commit last reviewed, when there was a review", () => {
-        expect(sinceReview(A, B)).toEqual({ kind: "range", from: A, to: B });
+        const at = "2026-11-24T10:00:00Z";
+        expect(sinceReview({ submittedAt: at, commit: { oid: A } }, B)).toEqual({ kind: "range", from: A, to: B });
         expect(sinceReview(null, B)).toBeNull();
+        expect(sinceReview({ submittedAt: null, commit: { oid: A } }, B)).toBeNull();
+        expect(sinceReview({ submittedAt: at, commit: null }, B)).toBeNull();
     });
 
     it("expands context only where the file exists on both sides", () => {

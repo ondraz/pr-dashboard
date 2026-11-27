@@ -222,7 +222,6 @@ export const reviewThreadDetailPageFragment = graphql(`
             startLine
             originalStartLine
             diffSide
-            startDiffSide
             subjectType
             comments(first: 100) {
                 totalCount

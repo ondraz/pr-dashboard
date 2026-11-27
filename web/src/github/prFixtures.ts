@@ -97,7 +97,6 @@ export function reviewThread(
         startLine: null,
         originalStartLine: null,
         diffSide: "RIGHT",
-        startDiffSide: null,
         subjectType: "LINE",
         comments: {
             totalCount: comments.length,

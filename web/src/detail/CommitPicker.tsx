@@ -26,7 +26,7 @@ export function CommitPicker({ spec }: { spec: DiffSpec }) {
     const [first, setFirst] = useState(0);
     const [last, setLast] = useState<number | null>(null);
     const lastIndex = last ?? oids.length - 1;
-    const since = sinceReview(pr.viewerLatestReview?.commit?.oid, pr.headRefOid);
+    const since = sinceReview(pr.viewerLatestReview, pr.headRefOid);
     const upToDate = since?.kind === "range" && since.from === since.to;
     const close = () => setOpen(false);
     const files = "/$owner/$repo/pull/$number/files/$range" as const;

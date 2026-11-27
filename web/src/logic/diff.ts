@@ -246,9 +246,13 @@ export function rangeOf(commits: readonly string[], first: number, last: number,
     return { kind: "range", from: first === 0 ? base : (commits[first - 1] as string), to };
 }
 
-/** The changes since the commit the viewer last reviewed, or null when they have not reviewed. */
-export function sinceReview(reviewedOid: string | null | undefined, headOid: string): PartialDiffSpec | null {
-    return reviewedOid ? { kind: "range", from: reviewedOid, to: headOid } : null;
+/** The changes since the commit of the viewer's last submitted review; a pending review has not been sent yet. */
+export function sinceReview(
+    review: { submittedAt: string | null; commit: { oid: string } | null } | null | undefined,
+    headOid: string,
+): PartialDiffSpec | null {
+    const from = review?.submittedAt ? review.commit?.oid : null;
+    return from ? { kind: "range", from, to: headOid } : null;
 }
 
 /** Whether a file's surroundings can be read from the file at the head commit; an added or deleted file has none. */
