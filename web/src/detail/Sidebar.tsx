@@ -4,7 +4,8 @@ import type { PrSession } from "../../../shared/sessions.ts";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useWriteAccess } from "../app/writeAccess.tsx";
 import { loadAssignableUsers, type PickOption, removeReviewRequest } from "../github/manage.ts";
-import { dismissReview, requestReview } from "../github/review.ts";
+import type { ReviewThread } from "../github/pullRequest.ts";
+import { dismissReview, requestReview, setThreadResolved } from "../github/review.ts";
 import { PrDraftIcon, PrOpenIcon, SparkIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
 import { CHECK_GROUP, type CheckEntry, groupChecks } from "../logic/checks.ts";
@@ -83,6 +84,66 @@ function useRevealInConversation(route: PrRoute) {
     };
 }
 
+/**
+ * The tick that resolves a thread from the list. A read-only sign-in sees it greyed out with the reason,
+ * so the action is there to be found; GitHub would refuse it anyway.
+ */
+function ResolveTick({ thread, where }: { thread: ReviewThread; where: string }) {
+    const { route } = useOpenPr();
+    const { canWrite, reason } = useWriteAccess(route);
+    const resolve = usePrWrite((client) => setThreadResolved(client, thread.id, true));
+    if (!thread.viewerCanResolve && canWrite) return null;
+    const title = canWrite
+        ? `Resolve the thread on ${where}`
+        : reason?.kind === "token"
+          ? "Sign in with the GitHub App to resolve threads; a token is read-only here"
+          : "GitHub refused changes in this repository";
+    return (
+        <>
+            <input
+                type="checkbox"
+                className="resolve-tick"
+                aria-label={`Resolve ${where}`}
+                title={title}
+                checked={resolve.isPending || resolve.isSuccess}
+                disabled={!canWrite || resolve.isPending || resolve.isSuccess}
+                onChange={() => resolve.mutate(undefined)}
+            />
+            {resolve.error && <p className="error-text resolve-error">{resolve.error.message}</p>}
+        </>
+    );
+}
+
+/** One open thread in the list: a tick to resolve it, and the rest of the row a jump to it. */
+function UnresolvedThread({ thread, onReveal }: { thread: ReviewThread; onReveal: () => void }) {
+    const comments = (thread.comments.nodes ?? []).filter((comment) => !!comment);
+    const first = comments[0];
+    const replies = thread.comments.totalCount - 1;
+    const where = `${thread.path.split("/").at(-1)}${threadLines(thread)}`;
+    return (
+        <li className="unresolved-row">
+            <ResolveTick thread={thread} where={where} />
+            <button type="button" className="unresolved-item" onClick={onReveal}>
+                <span className="unresolved-where">
+                    <code title={thread.path}>{where}</code>
+                    {thread.isOutdated && <span className="thread-tag">Outdated</span>}
+                </span>
+                <span className="unresolved-text">
+                    {first?.author?.avatarUrl && (
+                        <img className="avatar" src={first.author.avatarUrl} alt="" width={16} height={16} />
+                    )}
+                    <span className="who">{first?.author?.login ?? "ghost"}</span> {commentExcerpt(first?.body ?? "")}
+                </span>
+                {replies > 0 && (
+                    <span className="muted unresolved-replies">
+                        {replies} {replies === 1 ? "reply" : "replies"}
+                    </span>
+                )}
+            </button>
+        </li>
+    );
+}
+
 /** Every thread still open and Copilot's standing verdict, each a click away from where it sits. */
 function UnresolvedComments() {
     const { route, detail } = useOpenPr();
@@ -106,42 +167,9 @@ function UnresolvedComments() {
                             </button>
                         </li>
                     )}
-                    {open.map((thread) => {
-                        const comments = (thread.comments.nodes ?? []).filter((comment) => !!comment);
-                        const first = comments[0];
-                        const replies = thread.comments.totalCount - 1;
-                        return (
-                            <li key={thread.id}>
-                                <button type="button" className="unresolved-item" onClick={() => reveal(thread.id)}>
-                                    <span className="unresolved-where">
-                                        <code title={thread.path}>
-                                            {thread.path.split("/").at(-1)}
-                                            {threadLines(thread)}
-                                        </code>
-                                        {thread.isOutdated && <span className="thread-tag">Outdated</span>}
-                                    </span>
-                                    <span className="unresolved-text">
-                                        {first?.author?.avatarUrl && (
-                                            <img
-                                                className="avatar"
-                                                src={first.author.avatarUrl}
-                                                alt=""
-                                                width={16}
-                                                height={16}
-                                            />
-                                        )}
-                                        <span className="who">{first?.author?.login ?? "ghost"}</span>{" "}
-                                        {commentExcerpt(first?.body ?? "")}
-                                    </span>
-                                    {replies > 0 && (
-                                        <span className="muted unresolved-replies">
-                                            {replies} {replies === 1 ? "reply" : "replies"}
-                                        </span>
-                                    )}
-                                </button>
-                            </li>
-                        );
-                    })}
+                    {open.map((thread) => (
+                        <UnresolvedThread key={thread.id} thread={thread} onReveal={() => reveal(thread.id)} />
+                    ))}
                 </ul>
             ) : (
                 <None text="Nothing is unresolved" />

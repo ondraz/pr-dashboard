@@ -13,7 +13,7 @@ import { usePrWrite, useReviewSubject } from "./useWrite.ts";
  */
 export function ThreadActions({ thread }: { thread: ReviewThread }) {
     const { route } = useOpenPr();
-    const { canWrite } = useWriteAccess(route);
+    const { canWrite, reason } = useWriteAccess(route);
     const subject = useReviewSubject();
     const [text, setText, clear] = useDraft(`${draftPrefix(route)}reply:${thread.id}`);
     const body = text ?? "";
@@ -24,7 +24,24 @@ export function ThreadActions({ thread }: { thread: ReviewThread }) {
         replyToThread(client, subject, thread.id, value, { single: true }),
     );
     const resolve = usePrWrite((client, resolved: boolean) => setThreadResolved(client, thread.id, resolved));
-    if (!canWrite) return null;
+    if (!canWrite) {
+        // A token is read-only here: the action shows where it would be, with how to get it.
+        if (reason?.kind !== "token" || thread.isResolved) return null;
+        return (
+            <div className="thread-actions">
+                <div className="thread-buttons">
+                    <button
+                        type="button"
+                        className="step-btn"
+                        disabled
+                        title="Sign in with the GitHub App to resolve threads; a token is read-only here"
+                    >
+                        Resolve conversation
+                    </button>
+                </div>
+            </div>
+        );
+    }
     const busy = toReview.isPending || single.isPending;
     const error = toReview.error ?? single.error ?? resolve.error;
     const send = (write: typeof toReview) => write.mutate(body, { onSuccess: clear });

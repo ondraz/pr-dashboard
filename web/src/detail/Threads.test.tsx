@@ -230,6 +230,18 @@ describe("threads", () => {
         await waitFor(() => expect(callsOf("UnresolveThread")).toEqual([{ threadId: "T_1" }]));
     });
 
+    it("resolves a thread with its tick in the side panel, which drops it from the list", async () => {
+        open("/acme/widgets/pull/12");
+        await thread();
+        const panel = screen.getByRole("region", { name: "Unresolved comments" });
+        const tick = within(panel).getByRole("checkbox", { name: "Resolve gears.ts:12" }) as HTMLInputElement;
+        expect(tick.disabled).toBe(false);
+        fireEvent.click(tick);
+        await waitFor(() => expect(callsOf("ResolveThread")).toEqual([{ threadId: "T_1" }]));
+        await waitFor(() => expect(within(panel).queryByRole("checkbox", { name: "Resolve gears.ts:12" })).toBeNull());
+        expect(within(panel).getByText("Nothing is unresolved")).toBeTruthy();
+    });
+
     it("shows no write action with a read-only token", async () => {
         sessionStorage.setItem("gh_token", "ghp_test");
         fields = {
@@ -239,7 +251,14 @@ describe("threads", () => {
         open("/acme/widgets/pull/12", { ...signedIn, token: async () => ({ status: "signed-out", configured: true }) });
         const details = await thread();
         expect(within(details).queryByRole("button", { name: "Reply..." })).toBeNull();
-        expect(within(details).queryByRole("button", { name: "Resolve conversation" })).toBeNull();
+        // Resolving shows where it would be, greyed out, with how to get it.
+        const resolve = within(details).getByRole("button", { name: "Resolve conversation" }) as HTMLButtonElement;
+        expect(resolve.disabled).toBe(true);
+        expect(resolve.title).toMatch(/Sign in with the GitHub App/);
+        const tick = within(screen.getByRole("region", { name: "Unresolved comments" })).getByRole("checkbox", {
+            name: "Resolve gears.ts:12",
+        }) as HTMLInputElement;
+        expect(tick.disabled).toBe(true);
         expect(screen.getByTitle("+1: 2")).toBeTruthy();
         expect(screen.queryByRole("button", { name: "Add a reaction" })).toBeNull();
     });
