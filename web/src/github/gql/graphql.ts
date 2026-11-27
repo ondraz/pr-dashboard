@@ -308,7 +308,7 @@ export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCu
           | { login: string }
          | null } | null> | null } } | null> | null };
 
-export type OutstandingWorkFragment = { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
+export type OutstandingWorkFragment = { isDraft: boolean, headRefOid: string, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
             | { login: string }
             | { login: string }
             | { login: string }
@@ -326,7 +326,19 @@ export type OutstandingWorkFragment = { reviewThreads: { pageInfo: { hasNextPage
         | { login: string }
         | { login: string }
         | { login: string }
-       | null } | null> | null } | null, mergeQueueEntry: { position: number, state: MergeQueueEntryState } | null };
+       | null } | null> | null } | null, mergeQueueEntry: { position: number, state: MergeQueueEntryState } | null, latestOpinionatedReviews: { nodes: Array<{ state: PullRequestReviewState, author:
+        | { login: string }
+        | { login: string }
+        | { login: string }
+        | { login: string }
+        | { login: string }
+       | null } | null> | null } | null, viewerReviews?: { nodes: Array<{ state: PullRequestReviewState, submittedAt: string | null, commit: { oid: string } | null, author:
+        | { login: string }
+        | { login: string }
+        | { login: string }
+        | { login: string }
+        | { login: string }
+       | null } | null> | null } | null };
 
 export type ReviewThreadsPageQueryVariables = Exact<{
   owner: string;
@@ -1380,6 +1392,28 @@ export const OutstandingWorkFragmentDoc = new TypedDocumentString(`
   mergeQueueEntry {
     position
     state
+  }
+  isDraft
+  headRefOid
+  latestOpinionatedReviews(first: 100) {
+    nodes {
+      state
+      author {
+        login
+      }
+    }
+  }
+  viewerReviews: reviews(last: 100, author: $viewer) @include(if: $withViewer) {
+    nodes {
+      state
+      submittedAt
+      commit {
+        oid
+      }
+      author {
+        login
+      }
+    }
   }
 }
     fragment ReviewThreadPage on PullRequestReviewThreadConnection {

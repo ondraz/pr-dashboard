@@ -440,10 +440,11 @@ heading.
 
 ## Notes
 
-Each refresh costs a search call plus one details call and one review call per PR (yours and
-the ones waiting for or reviewed by you), one
-lookup per colleague PR a stack of yours sits on, and one GraphQL query per 10 PRs for the
-unresolved counts. Only your own PRs are fetched, never a repository's whole open-PR list,
+Each refresh costs a search call per tab, one details call per PR of yours (stacks need its
+branches, reviewers and auto-merge), one lookup per colleague PR a stack of yours sits on, and one
+GraphQL query per 10 PRs (yours, and the ones waiting for or reviewed by you) for the unresolved
+counts, review state, draft state, head commit and your own reviews. A REST call per PR is what
+trips GitHub's secondary rate limit, so everything else comes in those batches. Only your own PRs are fetched, never a repository's whole open-PR list,
 so a busy repository costs no more than a quiet one. Once the search returns, the REST calls
 and the GraphQL queries run at once, each through its own small pool (12 and 3 requests in
 flight). A stack is followed down through at most 5 colleague PRs. At most 500 review threads are counted
@@ -527,7 +528,10 @@ pagination, typed GraphQL documents whose types GraphQL Code Generator writes in
 and the loaders for the three tabs. Every GET that returned an ETag is asked for again with
 `If-None-Match`, so an unchanged resource comes back as a 304, which does not count against the
 rate limit, and each response's rate-limit headers are collected per bucket for the page to
-show. Its tests, and the component tests of both pages (Testing Library on jsdom), run against a GitHub API
+show. Once GitHub refuses a request for a limit, the client sends nothing more until it resets:
+an exhausted bucket holds only its own requests, a secondary limit holds all of them. A request
+the browser saw fail with no answer at all holds them for 30 seconds, since GitHub's answer to a
+request over its secondary limit sometimes lacks the CORS headers the browser needs to read it. Its tests, and the component tests of both pages (Testing Library on jsdom), run against a GitHub API
 mocked with MSW; nothing in them reaches GitHub.
 
 ## License

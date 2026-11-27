@@ -83,6 +83,30 @@ export const outstandingWorkFragment = graphql(`
             position
             state
         }
+        isDraft
+        headRefOid
+        # Each reviewer's latest approval or change request, which decides the PR's review state.
+        latestOpinionatedReviews(first: 100) {
+            nodes {
+                state
+                author {
+                    login
+                }
+            }
+        }
+        # The viewer's own reviews, oldest first, for the review tabs; asked for only there.
+        viewerReviews: reviews(last: 100, author: $viewer) @include(if: $withViewer) {
+            nodes {
+                state
+                submittedAt
+                commit {
+                    oid
+                }
+                author {
+                    login
+                }
+            }
+        }
     }
 `);
 

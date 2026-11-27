@@ -6,7 +6,12 @@ import { RefreshProgress } from "../logic/progress.ts";
 import { type MyReviewStanding, myReviewStanding, type ReviewDecision, reviewDecision } from "../logic/reviews.ts";
 import { type AutoMerge, buildStackIndex, type StackNode } from "../logic/stacks.ts";
 import { tabSearches } from "../logic/tabs.ts";
-import { type MergeQueueEntry, type UnresolvedSummary, unresolvedSummary } from "../logic/unresolved.ts";
+import {
+    type MergeQueueEntry,
+    type OutstandingWork,
+    type UnresolvedSummary,
+    unresolvedSummary,
+} from "../logic/unresolved.ts";
 import { readChangeFingerprint } from "./changeCheck.ts";
 import type { GitHubClient } from "./client.ts";
 import { fetchOutstandingWork } from "./outstanding.ts";
@@ -96,10 +101,12 @@ const refOf = (hit: SearchHit): PrRef => ({ repoFullName: repoOfSearchHit(hit), 
 const keyOf = (pr: PrRef) => `${pr.repoFullName}#${pr.number}`;
 
 /**
- * Everything the three tabs show. The searches run first; then the REST calls (PR details, reviews,
- * the colleague PRs a stack sits on) and the GraphQL reads of unresolved threads run at once, each
- * through its own small pool. A PR whose details fail drops out of its stack; one whose threads
- * fail shows no unresolved count; a failed search fails the load.
+ * Everything the three tabs show. The searches run first; then the REST calls (the viewer's PRs'
+ * details and the colleague PRs a stack sits on) and the batched GraphQL reads (threads, reviews,
+ * draft state and head of every listed PR, ten to a query) run at once, each through its own small
+ * pool. REST is kept to what stacks need, since a request per PR is what trips GitHub's secondary
+ * limit. A PR whose details fail drops out of its stack; one whose batch fails shows no unresolved
+ * count or review state; a failed search fails the load.
  */
 export async function loadDashboard(
     client: GitHubClient,
@@ -127,7 +134,6 @@ export async function loadDashboard(
     const progress = new RefreshProgress(
         [
             ["repos", "repositories", repoNames.length],
-            ["reviews", "reviews", mineHits.length],
             ["comments", "comments", mineHits.length],
         ],
         report,
@@ -144,6 +150,12 @@ export async function loadDashboard(
     const requestedWorkPromise = fetchOutstandingWork(client, requestedHits.map(refOf), { login }).catch(
         (error: unknown) => {
             console.warn("Failed to read review threads on requested PRs:", error);
+            return null;
+        },
+    );
+    const reviewedWorkPromise = fetchOutstandingWork(client, reviewedHits.map(refOf), { login }).catch(
+        (error: unknown) => {
+            console.warn("Failed to read reviews on reviewed PRs:", error);
             return null;
         },
     );
@@ -165,34 +177,20 @@ export async function loadDashboard(
                 })
             ).data;
         });
-    // Null when any page fails, so a partial history never yields a verdict.
-    const allReviews = (pr: PrRef) =>
-        orNull(`reviews for ${keyOf(pr)}`, () => {
-            const { owner, repo } = splitRepo(pr.repoFullName);
-            return client.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews", {
-                owner,
-                repo,
-                pull_number: pr.number,
-                per_page: 100,
-            });
-        });
     const findByHead: FindPrByHead = (repoFullName, label) =>
         orNull(`the PR with head ${label} in ${repoFullName}`, () => fetchOpenPrByHead(client, repoFullName, label));
 
-    const withMyReview = async (hit: SearchHit) => {
+    // Where the viewer's review stands, from the batch: null work (the batch failed) gives "UNKNOWN".
+    const withMyReview = (hit: SearchHit, work: Map<string, OutstandingWork> | null) => {
         const ref = refOf(hit);
-        const [detail, reviews] = await Promise.all([pullDetail(ref), allReviews(ref)]);
+        const found = work?.get(keyOf(ref));
         return {
             ...hit,
             repoFullName: ref.repoFullName,
-            isDraft: detail ? !!detail.draft : !!hit.draft,
-            ...myReviewStanding(reviews, login, detail?.head.sha ?? null),
+            isDraft: found?.isDraft ?? !!hit.draft,
+            ...myReviewStanding(found?.viewerReviews ?? null, login, found?.headSha ?? null),
         };
     };
-    const reviewedPromise = Promise.all(reviewedHits.map(withMyReview));
-    // A review request can outlive the viewer's review (re-requested, or kept by automation), so
-    // the waiting list shows where that review stands too.
-    const requestedPromise = Promise.all(requestedHits.map(withMyReview));
 
     // A search hit lacks branches, reviewers and auto-merge, so every PR of the viewer's needs its
     // own details call.
@@ -227,14 +225,10 @@ export async function loadDashboard(
     const enriched = await Promise.all(
         mineHits.map(async (hit) => {
             const ref = refOf(hit);
-            const reviewsPromise = allReviews(ref);
             const node = (await stackIndexes.get(ref.repoFullName))?.get(hit.number) ?? null;
-            const reviewState = reviewDecision(await reviewsPromise);
-            progress.advance("reviews");
             return {
                 ...hit,
                 repoFullName: ref.repoFullName,
-                reviewState,
                 isDraft: node ? node.draft : !!hit.draft,
                 autoMerge: node?.autoMerge ?? null,
                 conflicting: node?.conflicting ?? false,
@@ -251,11 +245,17 @@ export async function loadDashboard(
     const outstanding = await outstandingPromise;
     const mine: MyPr[] = enriched.map((pr) => {
         const work = outstanding.get(keyOf(pr));
-        return { ...pr, ...unresolvedSummary(work), mergeQueue: work?.mergeQueue ?? null };
+        return {
+            ...pr,
+            reviewState: reviewDecision(work?.verdicts),
+            ...unresolvedSummary(work),
+            mergeQueue: work?.mergeQueue ?? null,
+        };
     });
 
     const requestedWork = await requestedWorkPromise;
-    const waiting: WaitingPr[] = (await requestedPromise).map((pr) => {
+    const waiting: WaitingPr[] = requestedHits.map((hit) => {
+        const pr = withMyReview(hit, requestedWork);
         const work = requestedWork?.get(keyOf(pr));
         return {
             ...pr,
@@ -266,5 +266,8 @@ export async function loadDashboard(
         };
     });
 
-    return { mine, waiting, reviewed: await reviewedPromise, repoNodes, fingerprint: await baseline };
+    const reviewedWork = await reviewedWorkPromise;
+    const reviewed: ReviewedPr[] = reviewedHits.map((hit) => withMyReview(hit, reviewedWork));
+
+    return { mine, waiting, reviewed, repoNodes, fingerprint: await baseline };
 }

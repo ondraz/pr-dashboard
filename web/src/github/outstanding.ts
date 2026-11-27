@@ -15,15 +15,18 @@ const THREAD_PAGE_CAP = 5;
 const CONCURRENCY = 3;
 
 export interface OutstandingOptions {
-    /** Counts the viewer's own threads and the replies in them. */
+    /** Counts the viewer's own threads and the replies in them, and reads the viewer's reviews. */
     login?: string | null;
     /** Called with the number of PRs read so far. */
     onProgress?: (done: number) => void;
 }
 
-/** A query reading `OutstandingWork` for several PRs at once, one alias and three variables per PR. */
+/**
+ * A query reading `OutstandingWork` for several PRs at once, one alias and three variables per PR,
+ * plus `$viewer` and `$withViewer` for the viewer's own reviews.
+ */
 export function batchQuery(count: number): string {
-    const variables: string[] = [];
+    const variables: string[] = ["$viewer: String", "$withViewer: Boolean!"];
     const aliases: string[] = [];
     for (let n = 0; n < count; n++) {
         variables.push(`$owner${n}: String!, $name${n}: String!, $number${n}: Int!`);
@@ -64,7 +67,10 @@ export async function fetchOutstandingWork(
     let done = 0;
     await Promise.all(
         batches.map(async (batch) => {
-            const variables: Record<string, string | number> = {};
+            const variables: Record<string, string | number | boolean | null> = {
+                viewer: login ?? null,
+                withViewer: !!login,
+            };
             batch.forEach((pr, n) => {
                 const { owner, repo } = splitRepo(pr.repoFullName);
                 variables[`owner${n}`] = owner;
@@ -87,6 +93,25 @@ export async function fetchOutstandingWork(
                 if (hasNextPage && endCursor) overflowed.push({ pr, cursor: endCursor });
                 found.copilot = copilotVerdict(latestCopilotReview(pullRequest.reviews?.nodes ?? []));
                 found.mergeQueue = pullRequest.mergeQueueEntry ?? null;
+                found.isDraft = pullRequest.isDraft;
+                found.headSha = pullRequest.headRefOid;
+                found.verdicts = (pullRequest.latestOpinionatedReviews?.nodes ?? []).flatMap((review) =>
+                    review ? [{ state: review.state, user: review.author }] : [],
+                );
+                if (pullRequest.viewerReviews) {
+                    found.viewerReviews = (pullRequest.viewerReviews.nodes ?? []).flatMap((review) =>
+                        review
+                            ? [
+                                  {
+                                      state: review.state,
+                                      user: review.author,
+                                      commit_id: review.commit?.oid ?? null,
+                                      submitted_at: review.submittedAt ?? null,
+                                  },
+                              ]
+                            : [],
+                    );
+                }
             });
 
             await Promise.all(

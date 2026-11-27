@@ -1,4 +1,5 @@
 import { type CopilotVerdict, copilotVerdict, latestCopilotReview, type ReviewLike } from "./copilot.ts";
+import type { RestReview } from "./reviews.ts";
 
 export interface MergeQueueEntry {
     position?: number | null;
@@ -35,6 +36,12 @@ export interface OutstandingWork {
     threadedReviews: Set<string>;
     copilot: CopilotVerdict | null;
     mergeQueue: MergeQueueEntry | null;
+    isDraft: boolean | null;
+    headSha: string | null;
+    /** Each reviewer's latest approval or change request; null when not read. */
+    verdicts: RestReview[] | null;
+    /** The viewer's own reviews, oldest first; null when not asked for or not read. */
+    viewerReviews: RestReview[] | null;
 }
 
 export function emptyOutstandingWork(): OutstandingWork {
@@ -46,6 +53,10 @@ export function emptyOutstandingWork(): OutstandingWork {
         threadedReviews: new Set(),
         copilot: null,
         mergeQueue: null,
+        isDraft: null,
+        headSha: null,
+        verdicts: null,
+        viewerReviews: null,
     };
 }
 

@@ -135,6 +135,75 @@ describe("createGitHubClient", () => {
         expect((error as RateLimitError).resetAt).toBeGreaterThanOrEqual(before + 60_000);
     });
 
+    it("holds every request back after a secondary limit, until it resets", async () => {
+        let sent = 0;
+        server.use(
+            http.get("https://api.github.com/user", () => {
+                sent++;
+                return HttpResponse.json(
+                    { message: "You have exceeded a secondary rate limit" },
+                    { status: 403, headers: { "retry-after": "60" } },
+                );
+            }),
+            http.post("https://api.github.com/graphql", () => {
+                sent++;
+                return HttpResponse.json({ data: {} });
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        await client.request("GET /user").catch(() => {});
+        const again = await client.request("GET /user").catch((e: unknown) => e);
+        const other = await graphql(client, "query { viewer { login } }", {}).catch((e: unknown) => e);
+        expect(again).toBeInstanceOf(RateLimitError);
+        expect(other).toBeInstanceOf(RateLimitError);
+        expect(sent).toBe(1);
+
+        vi.useFakeTimers({ toFake: ["Date"] });
+        vi.setSystemTime(Date.now() + 61_000);
+        try {
+            await graphql(client, "query { viewer { login } }", {});
+            expect(sent).toBe(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("holds only the exhausted bucket after a primary limit", async () => {
+        const reset = Math.floor(Date.now() / 1000) + 600;
+        server.use(
+            http.get("https://api.github.com/user", () =>
+                HttpResponse.json(
+                    { message: "API rate limit exceeded" },
+                    { status: 403, headers: { ...limitHeaders(0), "x-ratelimit-reset": String(reset) } },
+                ),
+            ),
+            http.get("https://api.github.com/search/issues", () =>
+                HttpResponse.json({ total_count: 0, incomplete_results: false, items: [] }),
+            ),
+        );
+        const client = createGitHubClient({ token: "t" });
+        await client.request("GET /user").catch(() => {});
+        expect(await client.request("GET /user").catch((e: unknown) => e)).toBeInstanceOf(RateLimitError);
+        const search = await client.request("GET /search/issues", { q: "is:pr" });
+        expect(search.status).toBe(200);
+    });
+
+    it("waits a little after GitHub left a request unanswered, which its secondary limit can do", async () => {
+        let sent = 0;
+        server.use(
+            http.get("https://api.github.com/user", () => {
+                sent++;
+                return HttpResponse.error();
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        const first = await client.request("GET /user").catch((e: unknown) => e);
+        expect(first).toBeInstanceOf(RateLimitError);
+        expect((first as Error).message).toMatch(/did not answer/);
+        expect(await client.request("GET /user").catch((e: unknown) => e)).toBeInstanceOf(RateLimitError);
+        expect(sent).toBe(1);
+    });
+
     it("leaves other errors alone", async () => {
         server.use(
             http.get("https://api.github.com/user", () => HttpResponse.json({ message: "Not Found" }, { status: 404 })),
@@ -187,6 +256,38 @@ describe("graphql", () => {
         const promise = graphql(createGitHubClient({ token: "t" }), "query Viewer { viewer { login } }", {});
         await expect(promise).rejects.toBeInstanceOf(RateLimitError);
         await expect(promise).rejects.toMatchObject({ resource: "graphql", resetAt: 1795770000000 });
+    });
+
+    it("pauses on GraphQL's per-minute limit, which it reports as RATE_LIMIT with points left in the hour", async () => {
+        let sent = 0;
+        server.use(
+            http.post("https://api.github.com/graphql", () => {
+                sent++;
+                return HttpResponse.json(
+                    {
+                        errors: [
+                            {
+                                type: "RATE_LIMIT",
+                                code: "graphql_rate_limit",
+                                message: "API rate limit already exceeded for user ID 1.",
+                            },
+                        ],
+                    },
+                    { headers: limitHeaders(3500, "graphql") },
+                );
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        const before = Date.now();
+        const first = await graphql(client, "query { viewer { login } }", {}).catch((e: unknown) => e);
+        expect(first).toBeInstanceOf(RateLimitError);
+        expect(first).toMatchObject({ resource: "secondary" });
+        expect((first as RateLimitError).resetAt).toBeGreaterThanOrEqual(before + 60_000);
+        expect((first as RateLimitError).resetAt).toBeLessThan(before + 120_000);
+        expect(await graphql(client, "query { viewer { login } }", {}).catch((e: unknown) => e)).toBeInstanceOf(
+            RateLimitError,
+        );
+        expect(sent).toBe(1);
     });
 
     it("never sends a conditional request", async () => {

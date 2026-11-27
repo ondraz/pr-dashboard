@@ -7,7 +7,7 @@ import { listLayout } from "../logic/layout.ts";
 import { waitingState } from "../logic/reviews.ts";
 import { createGitHubClient } from "./client.ts";
 import { fetchViewerLogin, loadDashboard } from "./dashboard.ts";
-import { outstanding, pullJson, review, searchHit, thread } from "./testFixtures.ts";
+import { batchPullRequest, pullJson, review, searchHit, thread } from "./testFixtures.ts";
 
 const API = "https://api.github.com";
 const github = mockGraphql.link(`${API}/graphql`);
@@ -28,15 +28,18 @@ const pulls: Record<string, ReturnType<typeof pullJson>> = {
     "acme/gadgets#30": pullJson("acme/gadgets", 30, "bobs-fix", "main", { user: { login: "bob" } }),
     "acme/widgets#40": pullJson("acme/widgets", 40, "carols-fix", "main", { user: { login: "carol" }, draft: true }),
 };
-const reviews: Record<string, unknown[]> = {
+const reviews: Record<string, ReturnType<typeof review>[]> = {
     "acme/widgets#11": [review("bob", "APPROVED", "mid-sha")],
     "acme/gadgets#30": [review("alice", "CHANGES_REQUESTED", "older-sha")],
     "acme/widgets#40": [review("alice", "COMMENTED", "carols-fix-sha"), review("alice", "APPROVED", "carols-fix-sha")],
 };
-const threads: Record<string, ReturnType<typeof outstanding>> = {
-    "acme/widgets#12": outstanding([thread(false, "bob", "bob"), thread(true, "bob", "bob")]),
-    "acme/gadgets#30": outstanding([thread(false, "alice", "bob")]),
+const threads: Record<string, ReturnType<typeof thread>[]> = {
+    "acme/widgets#12": [thread(false, "bob", "bob"), thread(true, "bob", "bob")],
+    "acme/gadgets#30": [thread(false, "alice", "bob")],
 };
+
+// Every REST read of a PR's details or reviews, which the batched query is meant to keep down.
+const restReads: string[] = [];
 
 const server = setupServer(
     http.get(`${API}/user`, () => HttpResponse.json({ login: "alice" })),
@@ -64,12 +67,14 @@ const server = setupServer(
         return HttpResponse.json({ total_count: 1, incomplete_results: false, items: [searchHit("acme/widgets", 40)] });
     }),
     http.get(`${API}/repos/:owner/:repo/pulls/:number`, ({ params }) => {
+        restReads.push(`details ${params.owner}/${params.repo}#${params.number}`);
         const found = pulls[`${params.owner}/${params.repo}#${params.number}`];
         return found ? HttpResponse.json(found) : HttpResponse.json({ message: "Server Error" }, { status: 500 });
     }),
-    http.get(`${API}/repos/:owner/:repo/pulls/:number/reviews`, ({ params }) =>
-        HttpResponse.json(reviews[`${params.owner}/${params.repo}#${params.number}`] ?? []),
-    ),
+    http.get(`${API}/repos/:owner/:repo/pulls/:number/reviews`, ({ params }) => {
+        restReads.push(`reviews ${params.owner}/${params.repo}#${params.number}`);
+        return HttpResponse.json(reviews[`${params.owner}/${params.repo}#${params.number}`] ?? []);
+    }),
     http.get(`${API}/repos/:owner/:repo/pulls`, ({ params, request }) => {
         const head = new URL(request.url).searchParams.get("head");
         const repo = `${params.owner}/${params.repo}`;
@@ -81,7 +86,10 @@ const server = setupServer(
         const data: Record<string, unknown> = {};
         for (let n = 0; `number${n}` in variables; n++) {
             const key = `${variables[`owner${n}`]}/${variables[`name${n}`]}#${variables[`number${n}`]}`;
-            data[`pr${n}`] = { pullRequest: threads[key] ?? outstanding([]) };
+            const viewer = variables.withViewer ? String(variables.viewer) : null;
+            data[`pr${n}`] = {
+                pullRequest: batchPullRequest(pulls[key], reviews[key] ?? [], threads[key] ?? [], viewer),
+            };
         }
         return HttpResponse.json({ data });
     }),
@@ -98,6 +106,7 @@ const server = setupServer(
 
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
 afterEach(() => {
+    restReads.length = 0;
     server.resetHandlers();
     vi.restoreAllMocks();
 });
@@ -167,7 +176,15 @@ describe("loadDashboard", () => {
             ]),
         );
         expect(messages[0]).toBe("Searching pull requests…");
-        expect(messages).toContain("Loading… repositories 0/2 · reviews 0/4 · comments 0/4");
+        expect(messages).toContain("Loading… repositories 0/2 · comments 0/4");
+
+        // REST reads only the details stacks need; reviews, draft state and heads come with the batch.
+        expect(restReads.sort()).toEqual([
+            "details acme/gadgets#21",
+            "details acme/widgets#11",
+            "details acme/widgets#12",
+            "details acme/widgets#13",
+        ]);
     });
 
     it("loads without unresolved counts when GraphQL fails", async () => {
@@ -175,7 +192,8 @@ describe("loadDashboard", () => {
         server.use(http.post(`${API}/graphql`, () => HttpResponse.json({ message: "Bad gateway" }, { status: 502 })));
         const data = await loadDashboard(createGitHubClient({ token: "t" }), "alice");
         expect(data.mine.every((pr) => pr.unresolved === 0)).toBe(true);
-        expect(data.waiting[0]).toMatchObject({ threadsLoaded: false, myOpenThreads: 0 });
+        expect(data.waiting[0]).toMatchObject({ threadsLoaded: false, myOpenThreads: 0, myVerdict: "UNKNOWN" });
+        expect(data.reviewed[0]).toMatchObject({ myVerdict: "UNKNOWN" });
         expect(data.fingerprint).toBeNull();
         expect(warn).toHaveBeenCalledWith("Failed to read unresolved review state:", expect.anything());
     });
