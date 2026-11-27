@@ -1,12 +1,15 @@
 import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanstack/react-router";
+import { AuthProvider } from "./app/AuthProvider.tsx";
 import { CollapseProvider } from "./list/collapse.tsx";
 import { ListPage } from "./list/ListPage.tsx";
 
 const rootRoute = createRootRoute({
     component: () => (
-        <CollapseProvider>
-            <Outlet />
-        </CollapseProvider>
+        <AuthProvider>
+            <CollapseProvider>
+                <Outlet />
+            </CollapseProvider>
+        </AuthProvider>
     ),
     notFoundComponent: () => (
         <div className="container">

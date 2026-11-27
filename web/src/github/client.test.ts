@@ -202,3 +202,47 @@ describe("graphql", () => {
         expect(conditional).toEqual([null, null]);
     });
 });
+
+describe("createGitHubClient with a token source", () => {
+    it("asks the source before every request and retries once with a fresh token after a 401", async () => {
+        const seen: (string | null)[] = [];
+        server.use(
+            http.get("https://api.github.com/user", ({ request }) => {
+                const auth = request.headers.get("authorization");
+                seen.push(auth);
+                return auth === "token ghu_fresh"
+                    ? HttpResponse.json({ login: "alice" })
+                    : HttpResponse.json({ message: "Bad credentials" }, { status: 401 });
+            }),
+        );
+        let held = "ghu_stale";
+        const refused: string[] = [];
+        const client = createGitHubClient({
+            token: {
+                current: async () => held,
+                refused: async (token) => {
+                    refused.push(token);
+                    held = "ghu_fresh";
+                    return held;
+                },
+            },
+        });
+
+        expect((await client.request("GET /user")).data.login).toBe("alice");
+        expect((await client.request("GET /user")).data.login).toBe("alice");
+        expect(seen).toEqual(["token ghu_stale", "token ghu_fresh", "token ghu_fresh"]);
+        expect(refused).toEqual(["ghu_stale"]);
+    });
+
+    it("gives up with GitHub's error once the source is signed out", async () => {
+        server.use(
+            http.get("https://api.github.com/user", () =>
+                HttpResponse.json({ message: "Bad credentials" }, { status: 401 }),
+            ),
+        );
+        const client = createGitHubClient({
+            token: { current: async () => "ghu_revoked", refused: async () => null },
+        });
+        await expect(client.request("GET /user")).rejects.toMatchObject({ status: 401 });
+    });
+});

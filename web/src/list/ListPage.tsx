@@ -1,16 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-    type FormEvent,
-    type KeyboardEvent,
-    type ReactNode,
-    useEffect,
-    useMemo,
-    useReducer,
-    useRef,
-    useState,
-} from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useAuth } from "../app/AuthProvider.tsx";
+import { SignIn } from "../app/SignIn.tsx";
 import { usePersistedChoice } from "../app/storage.ts";
-import { clearToken, isTokenRemembered, saveToken, storedToken } from "../app/token.ts";
 import { type AgeFilter, applyFilters, type StatusFilter } from "../logic/filters.ts";
 import { featureId, listLayout } from "../logic/layout.ts";
 import { REFRESH_MODES, type RefreshMode } from "../logic/refresh.ts";
@@ -48,46 +40,6 @@ function useTick(ms: number): void {
         const timer = setInterval(tick, ms);
         return () => clearInterval(timer);
     }, [ms]);
-}
-
-function TokenSetup({ onSave }: { onSave: (token: string, remember: boolean) => void }) {
-    const [value, setValue] = useState("");
-    const [remember, setRemember] = useState(isTokenRemembered);
-    const submit = (event: FormEvent) => {
-        event.preventDefault();
-        const token = value.trim();
-        if (token) onSave(token, remember);
-    };
-    return (
-        <form className="setup" onSubmit={submit}>
-            <label htmlFor="token-input">
-                Fine-grained GitHub token with <code>Pull requests</code> read access (
-                <a
-                    href="https://github.com/settings/personal-access-tokens/new"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                >
-                    create one
-                </a>
-                )
-            </label>
-            <div className="setup-row">
-                <input
-                    id="token-input"
-                    type="password"
-                    placeholder="github_pat_..."
-                    autoComplete="off"
-                    value={value}
-                    onChange={(event) => setValue(event.target.value)}
-                />
-                <label className="remember-label">
-                    <input type="checkbox" checked={remember} onChange={(event) => setRemember(event.target.checked)} />{" "}
-                    Remember across sessions
-                </label>
-                <button type="submit">Save &amp; Load</button>
-            </div>
-        </form>
-    );
 }
 
 function TabBar({
@@ -223,7 +175,8 @@ function TabContent({
 export function ListPage() {
     const queryClient = useQueryClient();
     const setCollapsed = useSetCollapsed();
-    const [token, setToken] = useState(storedToken);
+    const auth = useAuth();
+    const { credentials } = auth;
     const [tab, setTab] = usePersistedChoice<Tab>("tab", TABS, "mine");
     const [status, setStatus] = usePersistedChoice<StatusFilter>("status_filter", ["all", "open", "draft"], "all");
     const [age, setAge] = usePersistedChoice<AgeFilter>("age_filter", ["recent", "all"], "recent");
@@ -234,7 +187,7 @@ export function ListPage() {
         "live",
     );
     const [scrollTo, setScrollTo] = useState<string | null>(null);
-    const dashboard = useDashboard(token, mode);
+    const dashboard = useDashboard(credentials, mode);
     const { data, error, isFetching } = dashboard;
     useTick(30_000);
 
@@ -262,21 +215,23 @@ export function ListPage() {
     };
 
     const save = (next: string, remember: boolean) => {
-        saveToken(next, remember);
-        if (next === token) dashboard.refresh();
-        else setToken(next);
+        if (credentials?.kind === "token" && credentials.token === next) dashboard.refresh();
+        auth.saveToken(next, remember);
     };
 
-    const signOut = () => {
-        clearToken();
-        setToken(null);
+    const signOut = async () => {
+        if (credentials?.kind === "app") await auth.signOut();
+        else auth.clearToken();
         queryClient.removeQueries({ queryKey: ["dashboard"] });
     };
 
-    const showList = !!token && !error;
+    const signedIn = !!credentials;
+    const showList = signedIn && !error;
+    // Signed in through the app, a failed load is not fixed by pasting a token.
+    const showSignIn = auth.ready && !showList && credentials?.kind !== "app";
     const statusLine = isFetching
         ? (dashboard.progress ?? "Refreshing…")
-        : dashboard.updatedAt && token
+        : dashboard.updatedAt && signedIn
           ? `Updated ${timeAgo(dashboard.updatedAt)}`
           : "";
     // Only the start and the end are announced; the per-phase counters would make the live region noise.
@@ -284,13 +239,27 @@ export function ListPage() {
         ? "Refreshing pull requests"
         : error
           ? `Refresh failed: ${error.message}`
-          : data && token
+          : data && signedIn
             ? `Pull requests updated: ${data.mine.length}`
             : "";
 
     let content: ReactNode;
-    if (!token) content = <div className="empty">Enter a GitHub token to load your open PRs.</div>;
-    else if (error) content = <div className="error">{error.message}</div>;
+    if (!auth.ready) {
+        content = (
+            <div className="loading">
+                <div className="spinner" />
+                <div>Checking sign-in...</div>
+            </div>
+        );
+    } else if (!credentials) {
+        content = (
+            <div className="empty">
+                {auth.appConfigured
+                    ? "Sign in with GitHub, or enter a token, to load your open PRs."
+                    : "Enter a GitHub token to load your open PRs."}
+            </div>
+        );
+    } else if (error) content = <div className="error">{error.message}</div>;
     else if (!data) {
         content = (
             <div className="loading">
@@ -323,27 +292,33 @@ export function ListPage() {
                     </span>
                     <RefreshModes mode={mode} onChange={setMode} />
                     <span className="pr-count" title="Your open pull requests">
-                        {data && token ? data.mine.length : "-"}
+                        {data && signedIn ? data.mine.length : "-"}
                     </span>
                     <button
                         type="button"
                         className={`refresh-btn${isFetching ? " is-refreshing" : ""}`}
-                        disabled={isFetching || !token}
+                        disabled={isFetching || !signedIn}
                         onClick={dashboard.refresh}
                     >
                         <span className="btn-spinner" />
                         <span>Refresh</span>
                     </button>
-                    {token && (
-                        <button type="button" className="refresh-btn" onClick={signOut}>
-                            Clear token
+                    {credentials && (
+                        <button
+                            type="button"
+                            className="refresh-btn"
+                            onClick={() =>
+                                signOut().catch((failure: unknown) => console.error("Sign-out failed", failure))
+                            }
+                        >
+                            {credentials.kind === "app" ? "Sign out" : "Clear token"}
                         </button>
                     )}
                 </div>
             </div>
 
             <div className="container">
-                {!showList && <TokenSetup onSave={save} />}
+                {showSignIn && <SignIn onSaveToken={save} />}
                 {showList && (
                     <>
                         <TabBar tab={tab} counts={counts} onSelect={setTab} />

@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import type { SessionsPayload } from "../shared/sessions.ts";
 import { CONTENT_SECURITY_POLICY, createApp, createHttpServer, isAppRoute } from "./app.ts";
+import { AuthService } from "./auth.ts";
 import { servedByVite } from "./dev.ts";
 import { SessionIndex } from "./sessions.ts";
+import { TokenStore } from "./tokenStore.ts";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const sessions = new SessionIndex(join(FIXTURES, "desktop"), join(FIXTURES, "projects"));
@@ -24,7 +26,8 @@ writeFileSync(join(WEB_ROOT, "assets", "index-abc123.js"), "console.log('app');"
 writeFileSync(join(WEB_ROOT, "favicon.svg"), "<svg></svg>");
 afterAll(() => rmSync(WEB_ROOT, { recursive: true, force: true }));
 
-const app = createApp({ sessions, webRoot: WEB_ROOT });
+const auth = new AuthService({ clientId: null, store: new TokenStore(join(tmpdir(), "pr-dashboard-unused.json")) });
+const app = createApp({ sessions, auth, webRoot: WEB_ROOT });
 
 function get(path: string, host: string | null = "localhost:6789", init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
@@ -107,6 +110,22 @@ describe("createApp", () => {
         expect((await get(path)).status).toBe(404);
     });
 
+    it("answers sign-in itself rather than with the page", async () => {
+        const res = await get("/auth/token", "localhost:6789", { method: "POST" });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ status: "signed-out", configured: false });
+        expect(res.headers.get("Cache-Control")).toBe("no-store");
+        for (const [path, method] of [
+            ["/auth/token", "GET"],
+            ["/auth/nowhere", "POST"],
+        ] as const) {
+            const other = await get(path, "localhost:6789", { method });
+            expect(other.status).toBe(404);
+            expect(other.headers.get("Content-Type")).toMatch(/^application\/json/);
+        }
+        expect((await get("/auth/token", "evil.example", { method: "POST" })).status).toBe(403);
+    });
+
     it("does not walk out of the build", async () => {
         expect((await get("/assets/../../package.json")).status).toBe(404);
         expect((await get("/%2e%2e/package.json")).status).toBe(404);
@@ -114,7 +133,7 @@ describe("createApp", () => {
 
     it("says so when the app is not built", async () => {
         const error = vi.spyOn(console, "error").mockImplementation(() => {});
-        const unbuilt = createApp({ sessions, webRoot: join(WEB_ROOT, "missing") });
+        const unbuilt = createApp({ sessions, auth, webRoot: join(WEB_ROOT, "missing") });
         const res = await unbuilt.request("http://localhost/acme/widgets/pull/1", { headers: { Host: "localhost" } });
         expect(res.status).toBe(503);
         expect(await res.text()).toBe("The app is not built yet: run `make build`");
@@ -122,7 +141,7 @@ describe("createApp", () => {
     });
 
     it("leaves the page to Vite under make dev", async () => {
-        const dev = createApp({ sessions, webRoot: null });
+        const dev = createApp({ sessions, auth, webRoot: null });
         expect((await dev.request("http://localhost/", { headers: { Host: "localhost" } })).status).toBe(404);
         expect((await dev.request("http://localhost/sessions.json", { headers: { Host: "localhost" } })).status).toBe(
             200,
@@ -145,6 +164,8 @@ describe("servedByVite", () => {
         expect(servedByVite(req("/src/main.tsx?t=1"))).toBe(true);
         expect(servedByVite(req("/sessions.json"))).toBe(false);
         expect(servedByVite(req("/sessions.json?ts=1"))).toBe(false);
+        expect(servedByVite(req("/auth/token"))).toBe(false);
+        expect(servedByVite(req("/authors"))).toBe(true);
     });
 
     it("leaves any other Host to the server, which refuses it", () => {

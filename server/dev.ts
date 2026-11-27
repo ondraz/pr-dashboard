@@ -2,12 +2,12 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { fileURLToPath } from "node:url";
 import { getRequestListener } from "@hono/node-server";
 import type { Hono } from "hono";
-import { isLoopbackHost, SERVER_PATHS } from "./app.ts";
+import { isLoopbackHost, isServerPath } from "./app.ts";
 
 /** Under `make dev`, Vite answers everything but the server's own paths, and only to a loopback Host. */
 export function servedByVite(req: Pick<IncomingMessage, "url" | "headers">): boolean {
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
-    return isLoopbackHost(req.headers.host) && !SERVER_PATHS.has(path);
+    return isLoopbackHost(req.headers.host) && !isServerPath(path);
 }
 
 /**
