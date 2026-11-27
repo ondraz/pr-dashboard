@@ -25,15 +25,7 @@ export interface EditableComment {
  * A comment's text with its reactions, and, on the reader's own comments, Edit and Delete. An edit in progress
  * is a draft like any other, so it survives a refresh.
  */
-export function CommentBody({
-    kind,
-    comment,
-    empty = "",
-}: {
-    kind: CommentKind;
-    comment: EditableComment;
-    empty?: string;
-}) {
+export function CommentBody({ kind, comment }: { kind: CommentKind; comment: EditableComment }) {
     const { route } = useOpenPr();
     const { canWrite } = useWriteAccess(route);
     const [text, setText, clear] = useDraft(`${draftPrefix(route)}edit:${comment.id}`);
@@ -73,7 +65,7 @@ export function CommentBody({
 
     return (
         <>
-            {comment.bodyHTML.trim() ? <Markdown html={comment.bodyHTML} /> : empty && <p className="muted">{empty}</p>}
+            {comment.bodyHTML.trim() && <Markdown html={comment.bodyHTML} />}
             <div className="comment-footer">
                 <Reactions subjectId={comment.id} groups={comment.reactionGroups} canReact={comment.viewerCanReact} />
                 {(canEdit || canDelete) && (
