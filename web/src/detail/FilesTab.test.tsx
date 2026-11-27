@@ -5,9 +5,18 @@ import { graphql as mockGraphql } from "msw/graphql";
 import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { pullCommit, pullRequestFields, pullRequestResponse, reviewThread } from "../github/prFixtures.ts";
+import {
+    checkAnnotation,
+    checkRun,
+    commitChecksResponse,
+    pullCommit,
+    pullRequestFields,
+    pullRequestResponse,
+    reviewThread,
+} from "../github/prFixtures.ts";
 import type { PullRequestFields, ReviewThread } from "../github/pullRequest.ts";
 import { pullJson } from "../github/testFixtures.ts";
+import type { CheckNode } from "../logic/checks.ts";
 import { renderApp } from "../testApp.tsx";
 
 const API = "https://api.github.com";
@@ -68,7 +77,9 @@ let rawDiffRequests = 0;
 let rawDiffStatus = 200;
 let fields: PullRequestFields;
 let threads: ReviewThread[];
+let checks: CheckNode[] | null;
 const reads: string[] = [];
+const checkReads: string[] = [];
 
 const server = setupServer(
     http.get(`${API}/user`, () => HttpResponse.json({ login: "alice" })),
@@ -100,6 +111,10 @@ const server = setupServer(
         }),
     ),
     github.query("PullRequestDetail", () => HttpResponse.json(pullRequestResponse(fields, [], threads))),
+    github.query("CommitChecks", ({ variables }) => {
+        checkReads.push(String(variables.oid));
+        return HttpResponse.json(commitChecksResponse(checks));
+    }),
     github.query("PullRequestCommits", () =>
         HttpResponse.json({
             data: {
@@ -188,7 +203,9 @@ beforeEach(() => {
     rawDiffStatus = 200;
     fields = pullRequestFields({ changedFiles: FILES.length, headRefOid: HEAD, baseRefOid: BASE });
     threads = [];
+    checks = null;
     reads.length = 0;
+    checkReads.length = 0;
 });
 afterEach(async () => {
     await waitFor(() => expect(queryClients.every((client) => client.isFetching() === 0)).toBe(true));
@@ -362,6 +379,27 @@ describe("Files changed", () => {
         expect(apart.querySelector(".hunk")).not.toBeNull();
     });
 
+    it("shows the checks' annotations at their lines, and above the file when the diff leaves the line out", async () => {
+        checks = [
+            checkRun("test", "FAILURE", {}, [
+                checkAnnotation("src/gears.ts", 2, "Expected 3 to be 4"),
+                checkAnnotation("src/gears.ts", 3, "Unused export", { annotationLevel: "WARNING" }),
+                checkAnnotation("src/axle.ts", 1, "Not in this diff"),
+            ]),
+        ];
+        open("/acme/widgets/pull/12/files");
+        const gears = await fileSection("src/gears.ts");
+        expect(await within(gears).findByText("2 annotations")).toBeTruthy();
+        const below = within(gears).getByText("Expected 3 to be 4");
+        const row = below.closest("tr") as HTMLElement;
+        expect(row.getAttribute("data-state")).toBe("extend");
+        expect(row.previousElementSibling?.textContent).toContain("const ratio = 3;");
+        expect(within(gears).getByRole("note", { name: "Warning: CI / test" }).closest(".file-level")).not.toBeNull();
+        expect(within(gears).getByRole("link", { name: "src/gears.ts:3" })).toBeTruthy();
+        expect(screen.queryByText("Not in this diff")).toBeNull();
+        expect(checkReads).toEqual([HEAD]);
+    });
+
     it("reads a file at the head commit to show the lines around its changes", async () => {
         open("/acme/widgets/pull/12/files");
         const gears = await fileSection("src/gears.ts");
@@ -387,6 +425,8 @@ describe("Files changed", () => {
         expect(screen.getByRole("link", { name: /Commits/ }).getAttribute("aria-current")).toBe("page");
         expect(document.querySelector(".commit-picker summary")?.textContent).toBe("Commit bbbbbbb ▾");
         expect(reads).toEqual([`commit ${SECOND}`]);
+        // The checks ran on the head commit, so an earlier commit's diff has no annotations to read.
+        expect(checkReads).toEqual([]);
 
         fireEvent.click(screen.getByRole("link", { name: "‹ Previous commit" }));
         await waitFor(() => expect(router.state.location.pathname).toBe(`/acme/widgets/pull/12/commits/${FIRST}`));

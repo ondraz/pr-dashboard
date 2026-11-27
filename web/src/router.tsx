@@ -3,9 +3,9 @@ import { AuthProvider } from "./app/AuthProvider.tsx";
 import { DashboardProvider } from "./app/DashboardProvider.tsx";
 import { ListEntryProvider } from "./app/listReturn.tsx";
 import { WriteAccessProvider } from "./app/writeAccess.tsx";
+import { ChecksTab } from "./detail/ChecksTab.tsx";
 import { CommitsTab } from "./detail/CommitsTab.tsx";
 import { ConversationTab } from "./detail/ConversationTab.tsx";
-import { ElsewhereTab } from "./detail/ElsewhereTab.tsx";
 import { PrPage } from "./detail/PrPage.tsx";
 import { CollapseProvider } from "./list/collapse.tsx";
 import { ListPage } from "./list/ListPage.tsx";
@@ -100,7 +100,7 @@ const filesRangeRoute = createRoute({
 const checksRoute = createRoute({
     getParentRoute: () => prRoute,
     path: "checks",
-    component: ElsewhereTab,
+    component: ChecksTab,
 });
 
 export const routeTree = rootRoute.addChildren([

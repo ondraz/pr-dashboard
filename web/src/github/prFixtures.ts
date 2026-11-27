@@ -1,4 +1,5 @@
 /** Fictional PR page payloads for the tests, typed as the GraphQL documents read them. */
+import type { CheckNode } from "../logic/checks.ts";
 import type { PullCommit, PullRequestFields, ReviewThread, TimelineNode } from "./pullRequest.ts";
 
 type Of<T extends TimelineNode["__typename"]> = Extract<TimelineNode, { __typename: T }>;
@@ -223,6 +224,84 @@ export function pullRequestResponse(
                     ...fields,
                     reviewThreads: page(threads, threadCursor),
                     timelineItems: page(nodes, timelineCursor),
+                },
+            },
+        },
+    };
+}
+
+type CheckRunNode = Extract<CheckNode, { __typename: "CheckRun" }>;
+type AnnotationNode = NonNullable<NonNullable<NonNullable<CheckRunNode["annotations"]>["nodes"]>[number]>;
+
+export function checkAnnotation(
+    path: string,
+    line: number,
+    message: string,
+    extra: Partial<AnnotationNode> = {},
+): AnnotationNode {
+    return {
+        annotationLevel: "FAILURE",
+        path,
+        location: { start: { line }, end: { line } },
+        title: null,
+        message,
+        rawDetails: null,
+        blobUrl: `https://github.com/acme/widgets/blob/tip-sha/${path}#L${line}`,
+        ...extra,
+    };
+}
+
+/** An Actions job's check run; its database id is the job's. */
+export function checkRun(
+    name: string,
+    conclusion: CheckRunNode["conclusion"],
+    extra: Partial<CheckRunNode> = {},
+    annotations: AnnotationNode[] = [],
+): CheckRunNode {
+    return {
+        __typename: "CheckRun",
+        id: `CR_${name}`,
+        databaseId: 4000 + name.length,
+        name,
+        status: conclusion ? "COMPLETED" : "IN_PROGRESS",
+        conclusion,
+        detailsUrl: `https://github.com/acme/widgets/actions/runs/1/job/${4000 + name.length}`,
+        url: `https://github.com/acme/widgets/runs/${4000 + name.length}`,
+        startedAt: "2026-11-26T10:00:00Z",
+        completedAt: conclusion ? "2026-11-26T10:01:05Z" : null,
+        title: null,
+        summary: null,
+        isRequired: false,
+        checkSuite: { app: { name: "GitHub Actions" }, workflowRun: { workflow: { name: "CI" } } },
+        annotations: { totalCount: annotations.length, nodes: annotations },
+        ...extra,
+    };
+}
+
+export function statusContext(context: string, state: Extract<CheckNode, { __typename: "StatusContext" }>["state"]) {
+    return {
+        __typename: "StatusContext" as const,
+        id: `SC_${context}`,
+        context,
+        state,
+        description: `${context} says ${state.toLowerCase()}`,
+        targetUrl: `https://ci.example.com/${context}`,
+        createdAt: "2026-11-26T10:00:00Z",
+        isRequired: true,
+        creator: { login: "ci-bot" },
+    };
+}
+
+/** A `CommitChecks` response: one page of the commit's checks, `null` for a commit without any. */
+export function commitChecksResponse(nodes: CheckNode[] | null, state = "FAILURE", cursor: string | null = null) {
+    return {
+        data: {
+            repository: {
+                object: {
+                    statusCheckRollup: nodes && {
+                        state,
+                        contexts: { pageInfo: { hasNextPage: cursor !== null, endCursor: cursor }, nodes },
+                    },
                 },
             },
         },

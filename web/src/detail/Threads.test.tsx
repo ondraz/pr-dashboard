@@ -6,7 +6,14 @@ import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthApi } from "../app/auth.ts";
-import { actor, pullRequestFields, pullRequestResponse, reviewThread, timeline } from "../github/prFixtures.ts";
+import {
+    actor,
+    commitChecksResponse,
+    pullRequestFields,
+    pullRequestResponse,
+    reviewThread,
+    timeline,
+} from "../github/prFixtures.ts";
 import type { PullRequestFields, ReviewThread, TimelineNode } from "../github/pullRequest.ts";
 import { renderApp } from "../testApp.tsx";
 
@@ -67,6 +74,7 @@ const server = setupServer(
         }),
     ),
     github.query("PullRequestDetail", () => HttpResponse.json(pullRequestResponse(fields, nodes, threads))),
+    github.query("CommitChecks", () => HttpResponse.json(commitChecksResponse(null))),
     github.query("PullRequestViewedFiles", () =>
         HttpResponse.json({
             data: {

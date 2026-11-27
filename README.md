@@ -64,7 +64,7 @@ one in the list as its tab, filters and grouping currently show it.
   resolved ones folded), commits, force-pushes, review requests, label, title and base changes,
   draft state, closing and merging. Bodies are the HTML GitHub rendered from the Markdown, run
   through DOMPurify once more before they reach the page. At the bottom, the merge box: the review
-  decision, the checks on the head commit counted by outcome, whether the branch merges cleanly
+  decision, the checks on the head commit counted by outcome (opening the Checks tab), whether the branch merges cleanly
   (conflicts, out of date, blocked by the base branch's rules, still being worked out), and
   auto-merge or the PR's place in the merge queue, with the actions that land it (see
   [Managing the PR](#managing-the-pr))
@@ -91,8 +91,16 @@ one in the list as its tab, filters and grouping currently show it.
   side); or a range of commits, from one to another (`.../files/<before>..<last>`, as GitHub writes
   it). These use the same paths as GitHub. When the commit you reviewed is no longer in the branch's
   history, as after a force-push, the diff says that it starts where the two histories meet. Review
-  threads show only on all changes, since their lines belong to that diff
-- **Checks** opens on GitHub for now
+  threads show only on all changes, since their lines belong to that diff. The checks' annotations
+  show on every diff that ends at the head commit, which they were made on: under the line each one
+  ends on when the diff shows it, and above the file's hunks otherwise; the file's header counts them
+- **Checks**: the check runs and commit statuses on the head commit, as GitHub's merge box counts
+  them: failing first, then those still running, the successful and the skipped ones, each with
+  its state, how long it ran, the app that ran it, and whether the base branch requires it. A run
+  from GitHub Actions is named by its workflow and job and links to its log (**Logs**); any other
+  check links to its own page (**Details**). A failing check opens with its summary and its
+  annotations, each linking to its file and lines; the others fold them away. The tab counts the
+  checks, in red while one fails
 - The sidebar: reviewers and where each one's review stands, assignees, labels, the issues the PR
   closes, the milestone, the **Stack** the PR sits in (anyone's PRs below it down to the base
   branch and on top of it, each opening here), and **Sessions**: every Claude session that made
@@ -293,7 +301,8 @@ Without a client id the page offers only the token below.
 2. Set **Token name** (e.g. `pr-dashboard`) and **Expiration** (max 366 days)
 3. Under **Resource owner**, select yourself or the organization whose PRs you want to see
 4. Under **Repository access**, pick the repositories to include
-5. Under **Permissions > Repository permissions**, set **Pull requests** to **Read-only**
+5. Under **Permissions > Repository permissions**, set **Pull requests**, and for the Checks tab
+   **Checks** and **Commit statuses**, to **Read-only**
 6. Click **Generate token**. A token scoped to an organization has to be approved by an
    org owner before it works
 7. Run `make serve` to open the dashboard, then paste the token
@@ -397,6 +406,10 @@ read of the PR, one lookup per PR below it and one per level above it, at most 5
 ETags these cost nothing once unchanged. In live mode an open PR adds its own change check, one more
 point every 15 seconds, so about 480 points an hour with the list's.
 
+The Checks tab reads the head commit's checks with one GraphQL query per 50 of them (up to 500),
+with each check's first 50 annotations, read again with the PR; the Files changed tab shares that read
+for its annotations whenever its diff ends at the head commit.
+
 The Files changed tab reads which files you viewed with one more GraphQL query per 100 files, read
 again with the PR. A review action is one write (two for the first comment of a review, which opens
 the review first), after which the PR, or for a viewed mark the viewed state, is read again so the
@@ -429,8 +442,8 @@ exactly, and `.npmrc` keeps npm from installing any version less than two weeks 
 [the plan](docs/review-app-plan.md) for where it is going. `web/src/list/` is the list page and
 `web/src/detail/` the PR page; the list's data is loaded above both, so it survives opening a PR.
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
-parsing, the Copilot verdict, unresolved counts, review standing, filters, the list layout, and
-the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each
+parsing, the Copilot verdict, unresolved counts, review standing, filters, the list layout, the
+checks and their annotations, and the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each
 pinned by unit tests.
 
 `web/src/github/` is the GitHub API layer the app loads through: Octokit with REST

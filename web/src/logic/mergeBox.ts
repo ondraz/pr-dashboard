@@ -32,15 +32,20 @@ const FAILING = new Set(["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_R
 const PENDING = new Set(["PENDING", "EXPECTED", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED"]);
 const SKIPPED = new Set(["SKIPPED", "NEUTRAL"]);
 
+export type CheckGroup = "failing" | "pending" | "successful" | "skipped";
+
+/** Where a check run's or a status's state puts it: a run's conclusion once it has one, else its status. */
+export function checkGroup(state: string): CheckGroup {
+    if (FAILING.has(state)) return "failing";
+    if (PENDING.has(state)) return "pending";
+    if (SKIPPED.has(state)) return "skipped";
+    return "successful";
+}
+
 /** "2 failing, 5 successful, 1 pending" from check runs and commit statuses counted by state. */
 export function checkCounts(counts: readonly CheckCount[]): string {
-    const tally = { failing: 0, successful: 0, pending: 0, skipped: 0 };
-    for (const { state, count } of counts) {
-        if (FAILING.has(state)) tally.failing += count;
-        else if (PENDING.has(state)) tally.pending += count;
-        else if (SKIPPED.has(state)) tally.skipped += count;
-        else tally.successful += count;
-    }
+    const tally: Record<CheckGroup, number> = { failing: 0, successful: 0, pending: 0, skipped: 0 };
+    for (const { state, count } of counts) tally[checkGroup(state)] += count;
     return Object.entries(tally)
         .filter(([, count]) => count > 0)
         .map(([name, count]) => `${count} ${name}`)

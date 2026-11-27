@@ -9,10 +9,14 @@ import type { PrSession } from "../../../shared/sessions.ts";
 import type { Services } from "../app/services.tsx";
 import {
     actor,
+    checkAnnotation,
+    checkRun,
+    commitChecksResponse,
     pullCommit,
     pullRequestFields,
     pullRequestResponse,
     reviewThread,
+    statusContext,
     timeline,
 } from "../github/prFixtures.ts";
 import { pullJson, searchHit } from "../github/testFixtures.ts";
@@ -100,6 +104,18 @@ const reviewSession: PrSession = {
 };
 
 let detailRequests = 0;
+const checkRequests: Record<string, unknown>[] = [];
+
+// tip-sha: the tests failed with an annotation, lint is still running, the build passed, the docs were
+// skipped, and a required deploy status passed; the build and the status come on the second page.
+const checksFirstPage = [
+    checkRun("test", "FAILURE", { title: "1 test failed", summary: "gears.test.ts: turns once", isRequired: true }, [
+        checkAnnotation("src/gears.ts", 12, "Expected 3 to be 4"),
+    ]),
+    checkRun("lint", null),
+    checkRun("docs", "SKIPPED"),
+];
+const checksSecondPage = [checkRun("build", "SUCCESS"), statusContext("deploy", "SUCCESS")];
 
 const handlers = [
     http.get(`${API}/user`, () => HttpResponse.json({ login: "alice" })),
@@ -176,6 +192,14 @@ const handlers = [
             },
         });
     }),
+    github.query("CommitChecks", ({ variables }) => {
+        checkRequests.push(variables);
+        return HttpResponse.json(
+            variables.after === null
+                ? commitChecksResponse(checksFirstPage, "FAILURE", "C2")
+                : commitChecksResponse(checksSecondPage, "FAILURE"),
+        );
+    }),
     github.query("PullRequestCommits", () =>
         HttpResponse.json({
             data: {
@@ -223,6 +247,7 @@ beforeEach(() => {
     localStorage.setItem("refresh_interval", "0");
     sessionStorage.setItem("gh_token", "ghp_test");
     detailRequests = 0;
+    checkRequests.length = 0;
 });
 afterEach(async () => {
     await waitFor(() => expect(queryClients.every((client) => client.isFetching() === 0)).toBe(true));
@@ -258,6 +283,9 @@ describe("PR page", () => {
         ).toBe(`claude://claude.ai/epitaxy/${madeSession.id}`);
 
         expect(screen.getByRole("link", { name: "Conversation" }).getAttribute("aria-current")).toBe("page");
+        const checksTab = screen.getByRole("link", { name: /Checks/ });
+        expect(checksTab.getAttribute("href")).toBe("/acme/widgets/pull/12/checks");
+        expect(checksTab.textContent).toBe("Checks 4");
         expect(screen.getByRole("link", { name: /Files changed/ }).getAttribute("href")).toBe(
             "/acme/widgets/pull/12/files",
         );
@@ -363,6 +391,9 @@ describe("PR page", () => {
             "✕This branch has conflicts that must be resolvedwith mid",
             "✓Auto-merge enabled (squash) by alicemerges once checks and reviews pass",
         ]);
+        expect(within(box).getByRole("link", { name: "All checks have passed" }).getAttribute("href")).toBe(
+            "/acme/widgets/pull/12/checks",
+        );
     });
 
     it("steps to the next and previous PR in the list with ] and [", async () => {
@@ -479,10 +510,72 @@ describe("PR page", () => {
         expect(detailRequests).toBe(0);
     });
 
-    it("points to GitHub for the checks, which it does not show yet", async () => {
+    it("lists the head commit's checks, failing first, with their logs and annotations", async () => {
         open("/acme/widgets/pull/12/checks");
         await heading();
-        expect(screen.getByRole("link", { name: "Open them on GitHub" }).getAttribute("href")).toBe(`${PR_URL}/checks`);
+        expect(screen.getByRole("link", { name: /Checks/ }).getAttribute("aria-current")).toBe("page");
+        expect(await screen.findByRole("heading", { name: "Some checks were not successful" })).toBeTruthy();
+        expect(document.querySelector(".checks-summary")?.textContent).toContain(
+            "1 failing, 1 pending, 2 successful, 1 skipped on tip-sha",
+        );
+        // The commit is named by its id, and every page reads the same one.
+        expect(checkRequests).toEqual([
+            { owner: "acme", name: "widgets", oid: "tip-sha", number: 12, after: null },
+            { owner: "acme", name: "widgets", oid: "tip-sha", number: 12, after: "C2" },
+        ]);
+
+        const groups = screen.getAllByRole("region").filter((region) => region.classList.contains("check-group"));
+        expect(groups.map((group) => group.getAttribute("aria-label"))).toEqual([
+            "Failing",
+            "In progress",
+            "Successful",
+            "Skipped",
+        ]);
+        const failing = within(groups[0] as HTMLElement);
+        expect(groups[0]?.querySelector(".check-name")?.textContent).toBe("CI / test");
+        expect(failing.getByText("Required")).toBeTruthy();
+        expect(failing.getByText("Failure · 1m 05s · GitHub Actions")).toBeTruthy();
+        expect(failing.getByText("1 test failed")).toBeTruthy();
+        expect(failing.getByRole("link", { name: "Logs" }).getAttribute("href")).toBe(
+            "https://github.com/acme/widgets/actions/runs/1/job/4004",
+        );
+        // A failing check's summary and annotations are open from the start.
+        expect((failing.getByText("Summary and 1 annotation").parentElement as HTMLDetailsElement).open).toBe(true);
+        expect(failing.getByText("gears.test.ts: turns once")).toBeTruthy();
+        const annotation = failing.getByRole("note", { name: "Failure: CI / test" });
+        expect(within(annotation).getByText("Expected 3 to be 4")).toBeTruthy();
+        expect(within(annotation).getByRole("link", { name: "src/gears.ts:12" }).getAttribute("href")).toBe(
+            "https://github.com/acme/widgets/blob/tip-sha/src/gears.ts#L12",
+        );
+
+        const successful = within(groups[2] as HTMLElement);
+        expect(successful.getAllByRole("listitem").map((row) => row.querySelector(".check-name")?.textContent)).toEqual(
+            ["CI / build", "deploy"],
+        );
+        expect(successful.getByRole("link", { name: "Details" }).getAttribute("href")).toBe(
+            "https://ci.example.com/deploy",
+        );
+        expect(screen.getByRole("link", { name: "View on GitHub" }).getAttribute("href")).toBe(`${PR_URL}/checks`);
+    });
+
+    it("says so when no check ran on the head commit", async () => {
+        server.use(github.query("CommitChecks", () => HttpResponse.json(commitChecksResponse(null))));
+        open("/acme/widgets/pull/12/checks");
+        expect(await screen.findByText("No checks ran on tip-sha.")).toBeTruthy();
+    });
+
+    it("says the checks could not be read rather than that none ran", async () => {
+        server.use(
+            github.query("CommitChecks", () =>
+                HttpResponse.json({
+                    ...commitChecksResponse(null),
+                    errors: [{ message: "Resource not accessible by personal access token" }],
+                }),
+            ),
+        );
+        open("/acme/widgets/pull/12/checks");
+        expect(await screen.findByText("Resource not accessible by personal access token")).toBeTruthy();
+        expect(screen.queryByText("No checks ran on tip-sha.")).toBeNull();
     });
 
     it("answers a path that is not a PR with a way back to the list", async () => {

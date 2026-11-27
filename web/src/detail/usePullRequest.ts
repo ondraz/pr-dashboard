@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useLiveTicks } from "../app/useLiveTicks.ts";
+import { loadCommitChecks } from "../github/checks.ts";
 import {
     loadPullRequest,
     loadPullRequestCommits,
@@ -64,6 +65,20 @@ export function useViewedFiles(route: PrRoute) {
         queryFn: () => {
             if (!github) throw new Error("Not signed in");
             return loadViewedFiles(github.client, route);
+        },
+        ...useRefreshOptions(),
+    });
+}
+
+/** The check runs and statuses on the PR's head commit `oid`, read again with the PR. */
+export function usePullRequestChecks(route: PrRoute, oid: string, enabled = true) {
+    const { github } = useDashboardState();
+    return useQuery({
+        queryKey: [...prQueryKey(github?.id, route), "checks", oid],
+        enabled: enabled && !!github,
+        queryFn: () => {
+            if (!github) throw new Error("Not signed in");
+            return loadCommitChecks(github.client, route, oid);
         },
         ...useRefreshOptions(),
     });
