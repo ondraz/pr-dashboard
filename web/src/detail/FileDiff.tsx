@@ -5,6 +5,7 @@ import type { FileViewedState } from "../github/gql/graphql.ts";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { ChevronIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
+import { type Annotation as AnnotationData, placeAnnotations } from "../logic/checks.ts";
 import {
     type ChangedFile,
     canExpandContext,
@@ -18,6 +19,7 @@ import {
 } from "../logic/diff.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { type CommentTarget, type DiffSide, lineTarget, type PatchLines, patchLines } from "../logic/review.ts";
+import { Annotation } from "./Annotation.tsx";
 import { CommentComposer } from "./CommentComposer.tsx";
 import { Thread } from "./Thread.tsx";
 import { useFileText } from "./useDiff.ts";
@@ -56,6 +58,8 @@ export interface FileDiffProps {
     onLoad: () => void;
     raw: RawDiffState;
     threads: FileThreads<ReviewThread> | undefined;
+    /** The checks' annotations on the file at `headOid`. */
+    annotations: readonly AnnotationData[] | undefined;
     /** Where the file and the whole diff are on GitHub. */
     blobUrl: string | null;
     filesUrl: string;
@@ -137,20 +141,26 @@ function useDiffFile(file: ChangedFile, hunks: string | null, theme: "light" | "
     }, [oldPath, file.path, hunks, theme, text]);
 }
 
-/** What sits under one line of the diff: its review threads, and a new comment being written there. */
+/** What sits under one line of the diff: the checks' annotations, its review threads, and a new comment. */
 interface LineExtras {
+    annotations: AnnotationData[];
     threads: ReviewThread[];
     composer: CommentTarget | null;
 }
 
 type ExtendSide = Record<string, { data: LineExtras }>;
 
-function extendDataOf(threads: FileThreads<ReviewThread> | undefined, composers: readonly CommentTarget[]) {
+function extendDataOf(
+    threads: FileThreads<ReviewThread> | undefined,
+    composers: readonly CommentTarget[],
+    annotations: ReadonlyMap<number, AnnotationData[]> | undefined,
+) {
     const sides: Record<DiffSide, ExtendSide> = { LEFT: {}, RIGHT: {} };
     const at = (side: DiffSide, line: number) => {
-        sides[side][line] ??= { data: { threads: [], composer: null } };
+        sides[side][line] ??= { data: { annotations: [], threads: [], composer: null } };
         return (sides[side][line] as { data: LineExtras }).data;
     };
+    for (const [line, list] of annotations ?? []) at("RIGHT", line).annotations = list;
     for (const [line, list] of Object.entries(threads?.old ?? {})) at("LEFT", Number(line)).threads = list;
     for (const [line, list] of Object.entries(threads?.new ?? {})) at("RIGHT", Number(line)).threads = list;
     for (const target of composers) {
@@ -161,9 +171,12 @@ function extendDataOf(threads: FileThreads<ReviewThread> | undefined, composers:
 
 function LineExtrasView({ data, lines }: { data: LineExtras | undefined; lines: PatchLines | null }) {
     // In split view the side without anything under the line is asked to render too, with nothing.
-    if (!data || (!data.threads.length && !data.composer)) return null;
+    if (!data || (!data.annotations.length && !data.threads.length && !data.composer)) return null;
     return (
         <div className="diff-threads">
+            {data.annotations.map((annotation) => (
+                <Annotation key={annotation.id} annotation={annotation} />
+            ))}
             {data.threads.map((thread) => (
                 <Thread key={thread.id} thread={thread} inDiff />
             ))}
@@ -174,7 +187,20 @@ function LineExtrasView({ data, lines }: { data: LineExtras | undefined; lines: 
 
 /** One file of the diff: its header, its file-level threads, and its hunks with their threads unless collapsed. */
 export function FileDiff(props: FileDiffProps) {
-    const { route, file, headOid, mode, theme, collapsed, onToggle, threads, blobUrl, composers, onComment } = props;
+    const {
+        route,
+        file,
+        headOid,
+        mode,
+        theme,
+        collapsed,
+        onToggle,
+        threads,
+        annotations,
+        blobUrl,
+        composers,
+        onComment,
+    } = props;
     const { viewed, onViewed } = props;
     const [wantsContext, setWantsContext] = useState(false);
     const body = collapsed ? null : bodyOf(props);
@@ -182,8 +208,13 @@ export function FileDiff(props: FileDiffProps) {
     const expandable = hunks !== null && canExpandContext(file);
     const text = useFileText(route, file.path, headOid, expandable && wantsContext);
     const diffFile = useDiffFile(file, hunks, theme, text.data);
-    const extendData = useMemo(() => extendDataOf(threads, composers), [threads, composers]);
     const lines = useMemo(() => (hunks === null ? null : patchLines(hunks)), [hunks]);
+    // An annotation is drawn under the line it ends on when the diff shows that line, and above the hunks otherwise.
+    const placed = useMemo(() => placeAnnotations(annotations ?? [], lines?.RIGHT ?? new Map()), [annotations, lines]);
+    const extendData = useMemo(
+        () => extendDataOf(threads, composers, placed.byLine),
+        [threads, composers, placed.byLine],
+    );
     const renderExtendLine = useCallback(
         ({ data }: { data: LineExtras | undefined }) => <LineExtrasView data={data} lines={lines} />,
         [lines],
@@ -222,6 +253,11 @@ export function FileDiff(props: FileDiffProps) {
                     {file.path}
                 </span>
                 {status && <span className="file-status">{status}</span>}
+                {!!annotations?.length && (
+                    <span className="file-threads">
+                        {annotations.length} {annotations.length === 1 ? "annotation" : "annotations"}
+                    </span>
+                )}
                 {!!threads?.count && (
                     <span className="file-threads">
                         {threads.count} {threads.count === 1 ? "thread" : "threads"}
@@ -276,8 +312,11 @@ export function FileDiff(props: FileDiffProps) {
             {body && (
                 <div className="file-body">
                     {text.error && <Note>The file could not be read for context: {text.error.message}</Note>}
-                    {(!!threads?.file.length || fileComposer) && (
+                    {(!!placed.elsewhere.length || !!threads?.file.length || fileComposer) && (
                         <div className="diff-threads file-level">
+                            {placed.elsewhere.map((annotation) => (
+                                <Annotation key={annotation.id} annotation={annotation} withPath />
+                            ))}
                             {threads?.file.map((thread) => (
                                 <Thread key={thread.id} thread={thread} inDiff />
                             ))}

@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { useWriteAccess } from "../app/writeAccess.tsx";
 import { mergeBoxRows } from "../logic/mergeBox.ts";
 import type { AutoMerge } from "../logic/stacks.ts";
@@ -44,7 +45,13 @@ export function MergeBox() {
                     <span className="merge-mark" aria-hidden="true">
                         {TONE_MARK[row.tone]}
                     </span>
-                    <span className="merge-title">{row.title}</span>
+                    {row.kind === "checks" && rollup ? (
+                        <Link className="merge-title" to="/$owner/$repo/pull/$number/checks" params={route}>
+                            {row.title}
+                        </Link>
+                    ) : (
+                        <span className="merge-title">{row.title}</span>
+                    )}
                     {row.detail && <span className="merge-detail">{row.detail}</span>}
                 </div>
             ))}

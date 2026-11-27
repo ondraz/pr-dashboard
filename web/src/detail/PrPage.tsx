@@ -9,6 +9,7 @@ import { useWriteAccess } from "../app/writeAccess.tsx";
 import type { PullRequestDetail } from "../github/pullRequest.ts";
 import { ArrowLeftIcon, RepoIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
+import { checkGroup } from "../logic/mergeBox.ts";
 import { githubPrUrl, type PrRoute } from "../logic/prRoute.ts";
 import { timeAgo } from "../logic/time.ts";
 import { PrContext } from "./PrContext.tsx";
@@ -48,14 +49,31 @@ function Tabs({ route, detail, actions }: { route: PrRoute; detail: PullRequestD
             <Link {...tab} to="/$owner/$repo/pull/$number/commits" params={route}>
                 Commits <span className="tab-count">{pr.commits.totalCount}</span>
             </Link>
-            <External className="tab-btn" href={`${pr.url}/checks`} title="Opens on GitHub">
-                Checks ↗
-            </External>
+            <Link {...tab} to="/$owner/$repo/pull/$number/checks" params={route}>
+                Checks <ChecksCount detail={detail} />
+            </Link>
             <Link {...tab} to="/$owner/$repo/pull/$number/files" params={route}>
                 Files changed <span className="tab-count">{pr.changedFiles}</span>
             </Link>
             {actions && <div className="pr-tab-actions">{actions}</div>}
         </nav>
+    );
+}
+
+/** How many checks ran on the head commit, marked when any of them failed or is still running. */
+function ChecksCount({ detail }: { detail: PullRequestDetail }) {
+    const rollup = detail.pr.headCommit.nodes?.[0]?.commit.statusCheckRollup;
+    if (!rollup) return null;
+    const counts = [
+        ...(rollup.contexts.checkRunCountsByState ?? []),
+        ...(rollup.contexts.statusContextCountsByState ?? []),
+    ];
+    const total = counts.reduce((sum, { count }) => sum + count, 0);
+    const group = checkGroup(rollup.state);
+    return (
+        <span className={`tab-count${group === "failing" ? " failing" : group === "pending" ? " pending" : ""}`}>
+            {total}
+        </span>
     );
 }
 

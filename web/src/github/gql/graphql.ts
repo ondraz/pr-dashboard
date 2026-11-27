@@ -4,6 +4,36 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import type { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
+/** Represents an annotation's information level. */
+export type CheckAnnotationLevel =
+  /** An annotation indicating an inescapable error. */
+  | 'FAILURE'
+  /** An annotation indicating some information. */
+  | 'NOTICE'
+  /** An annotation indicating an ignorable error. */
+  | 'WARNING';
+
+/** The possible states for a check suite or run conclusion. */
+export type CheckConclusionState =
+  /** The check suite or run requires action. */
+  | 'ACTION_REQUIRED'
+  /** The check suite or run has been cancelled. */
+  | 'CANCELLED'
+  /** The check suite or run has failed. */
+  | 'FAILURE'
+  /** The check suite or run was neutral. */
+  | 'NEUTRAL'
+  /** The check suite or run was skipped. */
+  | 'SKIPPED'
+  /** The check suite or run was marked stale by GitHub. Only GitHub can use this conclusion. */
+  | 'STALE'
+  /** The check suite or run has failed at startup. */
+  | 'STARTUP_FAILURE'
+  /** The check suite or run has succeeded. */
+  | 'SUCCESS'
+  /** The check suite or run has timed out. */
+  | 'TIMED_OUT';
+
 /** The possible states of a check run in a status rollup. */
 export type CheckRunState =
   /** The check run requires action. */
@@ -33,6 +63,21 @@ export type CheckRunState =
   /** The check run has timed out. */
   | 'TIMED_OUT'
   /** The check run is in waiting state. */
+  | 'WAITING';
+
+/** The possible states for a check suite or run status. */
+export type CheckStatusState =
+  /** The check suite or run has been completed. */
+  | 'COMPLETED'
+  /** The check suite or run is in progress. */
+  | 'IN_PROGRESS'
+  /** The check suite or run is in pending state. */
+  | 'PENDING'
+  /** The check suite or run has been queued. */
+  | 'QUEUED'
+  /** The check suite or run has been requested. */
+  | 'REQUESTED'
+  /** The check suite or run is in waiting state. */
   | 'WAITING';
 
 /** The possible sides of a diff. */
@@ -202,6 +247,29 @@ export type StatusState =
   | 'PENDING'
   /** Status is successful. */
   | 'SUCCESS';
+
+export type CommitChecksQueryVariables = Exact<{
+  owner: string;
+  name: string;
+  oid: string;
+  number: number;
+  after?: string | null | undefined;
+}>;
+
+
+export type CommitChecksQuery = { repository: { object:
+      | { statusCheckRollup: { state: StatusState, contexts: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<
+              | { __typename: 'CheckRun', id: string, databaseId: number | null, name: string, status: CheckStatusState, conclusion: CheckConclusionState | null, detailsUrl: string | null, url: string, startedAt: string | null, completedAt: string | null, title: string | null, summary: string | null, isRequired: boolean, checkSuite: { app: { name: string } | null, workflowRun: { workflow: { name: string } } | null }, annotations: { totalCount: number, nodes: Array<{ annotationLevel: CheckAnnotationLevel | null, path: string, title: string | null, message: string, rawDetails: string | null, blobUrl: string, location: { start: { line: number }, end: { line: number } } } | null> | null } | null }
+              | { __typename: 'StatusContext', id: string, context: string, state: StatusState, description: string | null, targetUrl: string | null, createdAt: string, isRequired: boolean, creator:
+                  | { login: string }
+                  | { login: string }
+                  | { login: string }
+                  | { login: string }
+                  | { login: string }
+                 | null }
+             | null> | null } } | null }
+      | Record<PropertyKey, never>
+     | null } | null };
 
 export type ChangeProbeQueryVariables = Exact<{
   mine: string;
@@ -1770,6 +1838,83 @@ export const PullRequestProbeFieldsFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"PullRequestProbeFields"}) as unknown as TypedDocumentString<PullRequestProbeFieldsFragment, unknown>;
+export const CommitChecksDocument = new TypedDocumentString(`
+    query CommitChecks($owner: String!, $name: String!, $oid: GitObjectID!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $oid) {
+      ... on Commit {
+        statusCheckRollup {
+          state
+          contexts(first: 50, after: $after) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+            nodes {
+              __typename
+              ... on CheckRun {
+                id
+                databaseId
+                name
+                status
+                conclusion
+                detailsUrl
+                url
+                startedAt
+                completedAt
+                title
+                summary
+                isRequired(pullRequestNumber: $number)
+                checkSuite {
+                  app {
+                    name
+                  }
+                  workflowRun {
+                    workflow {
+                      name
+                    }
+                  }
+                }
+                annotations(first: 50) {
+                  totalCount
+                  nodes {
+                    annotationLevel
+                    path
+                    location {
+                      start {
+                        line
+                      }
+                      end {
+                        line
+                      }
+                    }
+                    title
+                    message
+                    rawDetails
+                    blobUrl
+                  }
+                }
+              }
+              ... on StatusContext {
+                id
+                context
+                state
+                description
+                targetUrl
+                createdAt
+                isRequired(pullRequestNumber: $number)
+                creator {
+                  login
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<CommitChecksQuery, CommitChecksQueryVariables>;
 export const ChangeProbeDocument = new TypedDocumentString(`
     query ChangeProbe($mine: String!, $requested: String!, $reviewed: String!) {
   mine: search(type: ISSUE, query: $mine, first: 100) {

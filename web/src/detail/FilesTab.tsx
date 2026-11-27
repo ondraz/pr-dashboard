@@ -9,6 +9,7 @@ import type { FileViewedState } from "../github/gql/graphql.ts";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { setFileViewed } from "../github/review.ts";
 import { External } from "../list/PrRows.tsx";
+import { annotationsByPath } from "../logic/checks.ts";
 import {
     buildFileTree,
     type ChangedFile,
@@ -34,7 +35,7 @@ import { FileTree } from "./FileTree.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 import { Thread } from "./Thread.tsx";
 import { type DiffFiles, useColorScheme, useDiffFiles, useRawDiff } from "./useDiff.ts";
-import { prQueryKey, usePullRequestCommits, useViewedFiles } from "./usePullRequest.ts";
+import { prQueryKey, usePullRequestChecks, usePullRequestCommits, useViewedFiles } from "./usePullRequest.ts";
 import { usePrWrite } from "./useWrite.ts";
 
 const MODES: readonly DiffMode[] = ["unified", "split"];
@@ -210,6 +211,10 @@ export function FilesTab() {
         (file) => !isCollapsed(file.path) && (!isLargeDiff(file) || loaded.has(file.path)) && needsRawDiff(file),
     );
     const raw = useRawDiff(route, spec, headOid, wantsRaw);
+    // The checks' annotations are on lines of the head commit, so only a diff ending there can show them.
+    const atHead = headOid === pr.headRefOid;
+    const checks = usePullRequestChecks(route, pr.headRefOid, atHead).data;
+    const annotations = useMemo(() => (atHead && checks ? annotationsByPath(checks.checks) : null), [atHead, checks]);
     const filesUrl = githubDiffUrl(pr.url, spec);
 
     let content: ReactNode;
@@ -315,6 +320,7 @@ export function FilesTab() {
                                 onLoad={() => setLoaded((current) => toggled(current, file.path, true))}
                                 raw={{ sections: raw.data, error: raw.error }}
                                 threads={placed?.byPath.get(file.path)}
+                                annotations={annotations?.get(file.path)}
                                 blobUrl={
                                     file.status === "removed"
                                         ? null
