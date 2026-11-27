@@ -307,6 +307,7 @@ export const headChecksFragment = graphql(`
 export const pullRequestManageFragment = graphql(`
     fragment PullRequestManageFields on PullRequest {
         viewerCanUpdate
+        viewerCanEditFiles
         viewerCanUpdateBranch
         viewerCanEnableAutoMerge
         viewerCanDisableAutoMerge
@@ -421,11 +422,13 @@ export const pullRequestDetailQuery = graphql(`
                 }
                 assignees(first: 20) {
                     nodes {
+                        id
                         ...ActorFields
                     }
                 }
                 labels(first: 50) {
                     nodes {
+                        id
                         name
                     }
                 }

@@ -2488,3 +2488,93 @@ button.reaction {
 .title-edit .error-text {
     width: 100%;
 }
+
+.sidebar-heading {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+.sidebar-edit {
+    font-size: 12px;
+}
+.picker {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    margin: 4px 0 8px;
+    padding: 6px;
+    min-width: 0;
+    background: var(--color-bg);
+}
+.picker-head {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+.picker-head input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 12px;
+    padding: 3px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-text);
+    background: var(--color-bg);
+}
+.picker-options {
+    list-style: none;
+    margin: 6px 0 0;
+    padding: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    font-size: 13px;
+}
+.picker-options label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 2px;
+    cursor: pointer;
+}
+
+.suggestion-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 6px;
+}
+.suggestion-commit {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+}
+.suggestion-commit input,
+.suggestion-commit textarea {
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 3px 6px;
+}
+.suggestion-batch {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    background: var(--color-bg-secondary);
+}
+.suggestion-batch > span {
+    margin-right: auto;
+}
+.suggestion-batch .suggestion-commit {
+    width: 100%;
+}

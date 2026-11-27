@@ -36,8 +36,8 @@ const fields = pullRequestFields({
     latestReviews: {
         nodes: [{ id: "PRR_1", state: "CHANGES_REQUESTED", submittedAt: "2026-11-25T11:00:00Z", author: actor("bob") }],
     },
-    assignees: { nodes: [actor("alice")] },
-    labels: { nodes: [{ name: "backend" }] },
+    assignees: { nodes: [{ id: "U_alice", ...actor("alice") }] },
+    labels: { nodes: [{ id: "L_backend", name: "backend" }] },
     milestone: { title: "Gearbox v2", url: "https://github.com/acme/widgets/milestone/2" },
     closingIssuesReferences: {
         nodes: [

@@ -3,6 +3,7 @@ import { External } from "../list/PrRows.tsx";
 import { hunkTail, isPendingThread } from "../logic/conversation.ts";
 import { timeAgo } from "../logic/time.ts";
 import { CommentBody } from "./CommentBody.tsx";
+import { SuggestionActions } from "./Suggestions.tsx";
 import { ThreadActions } from "./ThreadActions.tsx";
 
 interface Actor {
@@ -68,6 +69,7 @@ export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDif
                         )}
                     </div>
                     <CommentBody kind="review-comment" comment={comment} />
+                    <SuggestionActions commentId={comment.id} />
                 </div>
             ))}
             <ThreadActions thread={thread} />

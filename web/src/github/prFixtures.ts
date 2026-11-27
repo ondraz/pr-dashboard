@@ -187,6 +187,7 @@ export function pullRequestFields(extra: Partial<PullRequestFields> = {}): PullR
         viewerLatestReview: null,
         reviews: { nodes: [] },
         viewerCanUpdate: true,
+        viewerCanEditFiles: true,
         viewerCanUpdateBranch: false,
         viewerCanEnableAutoMerge: true,
         viewerCanDisableAutoMerge: true,
