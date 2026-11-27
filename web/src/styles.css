@@ -971,8 +971,7 @@ body {
     margin: 24px 0 8px;
 }
 
-/* Collapsing. Every collapsible box carries a data-collapse-key and holds its rows in a
-   .group-body (or .stack-body), so hiding the body is all a toggle has to do. */
+/* Collapsing: a collapsed box renders only its header. */
 .collapse-header {
     cursor: pointer;
     user-select: none;
@@ -998,11 +997,6 @@ body {
 /* Points down when open, right when collapsed. */
 .collapsed > .collapse-header .collapse-chevron {
     transform: rotate(-90deg);
-}
-
-.collapsed > .group-body,
-.collapsed > .stack-body {
-    display: none;
 }
 
 /* A collapsed header is the last thing in its box, so the separator under it would
