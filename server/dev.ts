@@ -19,7 +19,8 @@ export async function createDevServer(app: Hono): Promise<Server> {
     const server = createServer();
     const vite = await createViteServer({
         configFile: fileURLToPath(new URL("../vite.config.ts", import.meta.url)),
-        server: { middlewareMode: { server } },
+        // Vite would answer other local origins with CORS headers; the page is only for itself.
+        server: { middlewareMode: { server }, cors: false },
         appType: "spa",
     });
     const api = getRequestListener(app.fetch);
