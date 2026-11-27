@@ -1,14 +1,16 @@
-import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import type { MouseEvent, ReactNode } from "react";
 import type { PrSession } from "../../../shared/sessions.ts";
 import type { MyPr, ReviewedPr, WaitingPr } from "../github/dashboard.ts";
 import { mergeBadge, unresolvedBadge, unresolvedTotalTitle, waitingBadge } from "../logic/badges.ts";
 import { labelColor } from "../logic/labels.ts";
 import { unresolvedTotal } from "../logic/layout.ts";
+import { prRouteOf } from "../logic/prRoute.ts";
 import { type SessionRole, sessionLink } from "../logic/sessionLinks.ts";
 import type { AutoMerge, StackNode } from "../logic/stacks.ts";
 import { timeAgo } from "../logic/time.ts";
 import type { MergeQueueEntry, UnresolvedSummary } from "../logic/unresolved.ts";
-import { CommentIcon, ConflictIcon, MergeIcon, PrDraftIcon, PrOpenIcon, SparkIcon } from "./icons.tsx";
+import { CommentIcon, ConflictIcon, GitHubIcon, MergeIcon, PrDraftIcon, PrOpenIcon, SparkIcon } from "./icons.tsx";
 
 /** Opens GitHub in a new tab; the page itself never navigates away. */
 export function External({
@@ -29,6 +31,41 @@ export function External({
     );
 }
 
+/** Opens the PR in the app; Cmd/Ctrl-click opens it on GitHub instead. */
+export function PrLink({ htmlUrl, children }: { htmlUrl: string; children: ReactNode }) {
+    const route = prRouteOf(htmlUrl);
+    if (!route) return <External href={htmlUrl}>{children}</External>;
+    const onClick = (event: MouseEvent) => {
+        if (!event.metaKey && !event.ctrlKey) return;
+        event.preventDefault();
+        window.open(htmlUrl, "_blank", "noopener,noreferrer");
+    };
+    return (
+        <Link to="/$owner/$repo/pull/$number" params={route} onClick={onClick}>
+            {children}
+        </Link>
+    );
+}
+
+export function GitHubLink({ htmlUrl, number }: { htmlUrl: string; number: number }) {
+    return (
+        <External className="gh-link" href={htmlUrl} title="Open on GitHub">
+            <GitHubIcon />
+            <span className="sr-only">Open #{number} on GitHub</span>
+        </External>
+    );
+}
+
+/** A PR's title, opening it in the app, with the way to GitHub beside it. */
+function TitleLinks({ pr }: { pr: { html_url: string; number: number; title: string } }) {
+    return (
+        <>
+            <PrLink htmlUrl={pr.html_url}>{pr.title}</PrLink>
+            <GitHubLink htmlUrl={pr.html_url} number={pr.number} />
+        </>
+    );
+}
+
 function StatusIcon({ draft }: { draft: boolean }) {
     return <span className={`pr-status ${draft ? "draft" : "open"}`}>{draft ? <PrDraftIcon /> : <PrOpenIcon />}</span>;
 }
@@ -37,7 +74,13 @@ function DraftBadge({ draft }: { draft: boolean }) {
     return draft ? <span className="draft-badge">Draft</span> : null;
 }
 
-function MergeBadge({ autoMerge, mergeQueue }: { autoMerge: AutoMerge | null; mergeQueue?: MergeQueueEntry | null }) {
+export function MergeBadge({
+    autoMerge,
+    mergeQueue,
+}: {
+    autoMerge: AutoMerge | null;
+    mergeQueue?: MergeQueueEntry | null;
+}) {
     const badge = mergeBadge(autoMerge, mergeQueue);
     if (!badge) return null;
     return (
@@ -118,7 +161,7 @@ function BaseMeta({ node }: { node: StackNode | null }) {
             <>
                 {" · "}
                 <span className="pr-base">
-                    based on <External href={node.parent.html_url}>#{node.parent.number}</External>
+                    based on <PrLink htmlUrl={node.parent.html_url}>#{node.parent.number}</PrLink>
                 </span>
             </>
         );
@@ -199,7 +242,7 @@ export function PrItem({
             <div className="pr-info">
                 <div className="pr-title">
                     <StackPos node={pr.stackNode} />
-                    <External href={pr.html_url}>{pr.title}</External>
+                    <TitleLinks pr={pr} />
                     <DraftBadge draft={pr.isDraft} />
                     <MergeBadge autoMerge={pr.autoMerge} mergeQueue={pr.mergeQueue} />
                     <ConflictBadge pr={pr} />
@@ -230,7 +273,7 @@ export function ContextItem({ node, now }: { node: StackNode; now: number }) {
             <div className="pr-info">
                 <div className="pr-title">
                     <StackPos node={node} />
-                    <External href={node.html_url}>{node.title}</External>
+                    <TitleLinks pr={node} />
                     <DraftBadge draft={node.draft} />
                     <MergeBadge autoMerge={node.autoMerge} />
                 </div>
@@ -254,7 +297,7 @@ export function WaitingItem({ pr, session, now }: { pr: WaitingPr; session: PrSe
             <StatusIcon draft={pr.isDraft} />
             <div className="pr-info">
                 <div className="pr-title">
-                    <External href={pr.html_url}>{pr.title}</External>
+                    <TitleLinks pr={pr} />
                     <DraftBadge draft={pr.isDraft} />
                 </div>
                 <div className="pr-meta">
@@ -297,7 +340,7 @@ export function ReviewedItem({
             <StatusIcon draft={pr.isDraft} />
             <div className="pr-info">
                 <div className="pr-title">
-                    <External href={pr.html_url}>{pr.title}</External>
+                    <TitleLinks pr={pr} />
                     <DraftBadge draft={pr.isDraft} />
                 </div>
                 <div className="pr-meta">

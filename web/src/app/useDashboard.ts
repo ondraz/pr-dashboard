@@ -1,7 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Credentials } from "../app/AuthProvider.tsx";
-import { useServices } from "../app/services.tsx";
 import { readChangeFingerprint } from "../github/changeCheck.ts";
 import type { GitHubClient } from "../github/client.ts";
 import { type DashboardData, fetchViewerLogin, loadDashboard } from "../github/dashboard.ts";
@@ -9,17 +7,30 @@ import { ChangeFingerprint } from "../logic/fingerprint.ts";
 import { LIVE_PROBE_MS, LiveCheck } from "../logic/liveCheck.ts";
 import { type RefreshMode, refreshInterval } from "../logic/refresh.ts";
 import type { PrSessions } from "../sessions.ts";
+import type { Credentials } from "./AuthProvider.tsx";
+import { useServices } from "./services.tsx";
 
 export interface DashboardView extends DashboardData {
     login: string;
     sessions: PrSessions;
 }
 
-interface GitHubSession {
+export interface GitHubSession {
+    /** Distinct per credentials, so queries keyed by it never mix two sign-ins' data. */
     id: number;
     client: GitHubClient;
     fingerprint: ChangeFingerprint;
     login: string | null;
+}
+
+export interface Dashboard {
+    github: GitHubSession | null;
+    data: DashboardView | null;
+    error: Error | null;
+    isFetching: boolean;
+    progress: string | null;
+    updatedAt: number | null;
+    refresh: () => void;
 }
 
 let nextSessionId = 0;
@@ -28,7 +39,7 @@ let nextSessionId = 0;
  * The three tabs' data for one set of credentials, refreshed as `mode` says: on a fixed interval, whenever the
  * tab becomes visible ("on access"), or in live mode whenever the cheap change check sees a change.
  */
-export function useDashboard(credentials: Credentials | null, mode: RefreshMode) {
+export function useDashboard(credentials: Credentials | null, mode: RefreshMode): Dashboard {
     const services = useServices();
     const session = useMemo<GitHubSession | null>(
         () =>
@@ -111,6 +122,7 @@ export function useDashboard(credentials: Credentials | null, mode: RefreshMode)
     }, [checking, liveCheck]);
 
     return {
+        github: session,
         data: query.data ?? null,
         error: query.error,
         isFetching: query.isFetching,
