@@ -7,8 +7,15 @@ import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrSession } from "../../../shared/sessions.ts";
 import type { Services } from "../app/services.tsx";
-import { pullCommit, pullRequestFields, pullRequestResponse, reviewThread, timeline } from "../github/prFixtures.ts";
-import { searchHit } from "../github/testFixtures.ts";
+import {
+    actor,
+    pullCommit,
+    pullRequestFields,
+    pullRequestResponse,
+    reviewThread,
+    timeline,
+} from "../github/prFixtures.ts";
+import { pullJson, searchHit } from "../github/testFixtures.ts";
 import { renderApp } from "../testApp.tsx";
 
 const API = "https://api.github.com";
@@ -17,12 +24,38 @@ const NOW = new Date("2026-11-27T12:00:00Z");
 const PR_URL = "https://github.com/acme/widgets/pull/12";
 
 // alice's widgets#12: bob asked for changes in two threads, one since resolved, and alice answered
-// the other; carol commented after alice force-pushed.
+// the other; carol commented after alice force-pushed. It sits on bob's #11 and carol's #14 sits on
+// it; alice's gadgets#13 comes after it in the list.
 const fields = pullRequestFields({
     bodyHTML: '<p>Turns them.</p><script>window.stolen = true</script><a href="https://example.com/spec">spec</a>',
     autoMergeRequest: { mergeMethod: "SQUASH", enabledBy: { login: "alice" } },
     mergeable: "CONFLICTING",
+    mergeStateStatus: "DIRTY",
+    reviewDecision: "CHANGES_REQUESTED",
+    reviewRequests: { nodes: [{ requestedReviewer: { login: "dave" } }] },
+    latestReviews: {
+        nodes: [{ state: "CHANGES_REQUESTED", submittedAt: "2026-11-25T11:00:00Z", author: actor("bob") }],
+    },
+    assignees: { nodes: [actor("alice")] },
+    labels: { nodes: [{ name: "backend" }] },
+    milestone: { title: "Gearbox v2", url: "https://github.com/acme/widgets/milestone/2" },
+    closingIssuesReferences: {
+        nodes: [
+            {
+                number: 7,
+                title: "Gears slip",
+                url: "https://github.com/acme/widgets/issues/7",
+                state: "OPEN",
+                repository: { nameWithOwner: "acme/widgets" },
+            },
+        ],
+    },
 });
+const restPulls = {
+    11: pullJson("acme/widgets", 11, "mid", "main", { title: "Mount the gears", user: { login: "bob" } }),
+    12: pullJson("acme/widgets", 12, "tip", "mid", { title: "Turn the gears" }),
+    14: pullJson("acme/widgets", 14, "paint", "tip", { title: "Paint the gears", user: { login: "carol" } }),
+};
 const openThread = reviewThread("T_1", "PRR_1", [
     { login: "bob", bodyHTML: "<p>Why 3?</p>" },
     { login: "alice", bodyHTML: "<p>It meshes.</p>", reviewId: "PRR_2" },
@@ -50,7 +83,20 @@ const madeSession: PrSession = {
     id: "local_0f0f0f0f-0000-4000-8000-000000000000",
     title: "Gear work",
     archived: false,
-    lastActivityAt: 1,
+    lastActivityAt: Date.parse("2026-11-26T12:00:00Z"),
+};
+const olderSession: PrSession = {
+    id: "local_0e0e0e0e-0000-4000-8000-000000000000",
+    title: "Gear spike",
+    archived: true,
+    lastActivityAt: Date.parse("2026-11-20T12:00:00Z"),
+};
+const reviewSession: PrSession = {
+    id: "dddddddd-0000-4000-8000-000000000000",
+    kind: "cli",
+    title: "Review the gears",
+    archived: false,
+    lastActivityAt: Date.parse("2026-11-27T09:00:00Z"),
 };
 
 let detailRequests = 0;
@@ -60,13 +106,26 @@ const handlers = [
     http.get(`${API}/search/issues`, ({ request }) => {
         const q = new URL(request.url).searchParams.get("q") ?? "";
         const items = q.startsWith("is:pr is:open author:alice")
-            ? [searchHit("acme/widgets", 12, { title: "Turn the gears" })]
+            ? [
+                  searchHit("acme/widgets", 12, { title: "Turn the gears" }),
+                  searchHit("acme/gadgets", 13, { title: "Polish the knobs", updated_at: "2026-11-24T10:00:00Z" }),
+              ]
             : [];
         return HttpResponse.json({ total_count: items.length, incomplete_results: false, items });
     }),
-    http.get(`${API}/repos/:owner/:repo/pulls/:number`, () =>
-        HttpResponse.json({ message: "Not Found" }, { status: 404 }),
-    ),
+    http.get(`${API}/repos/:owner/:repo/pulls/:number`, ({ params }) => {
+        const found = params.repo === "widgets" && restPulls[Number(params.number) as keyof typeof restPulls];
+        return found ? HttpResponse.json(found) : HttpResponse.json({ message: "Not Found" }, { status: 404 });
+    }),
+    http.get(`${API}/repos/:owner/:repo/pulls`, ({ params, request }) => {
+        const query = new URL(request.url).searchParams;
+        const head = query.get("head");
+        const base = query.get("base");
+        const open = params.repo === "widgets" ? Object.values(restPulls) : [];
+        return HttpResponse.json(
+            open.filter((pr) => (head ? pr.head.label === head : true) && (base ? pr.base.ref === base : true)),
+        );
+    }),
     http.get(`${API}/repos/:owner/:repo/pulls/:number/reviews`, () => HttpResponse.json([])),
     github.query("OutstandingWorkBatch", () => HttpResponse.json({ data: {} })),
     github.query("ChangeProbe", () =>
@@ -143,8 +202,8 @@ const queryClients: QueryClient[] = [];
 function open(path: string, services: Partial<Services> = {}) {
     const app = renderApp(path, {
         fetchSessions: async () => ({
-            made: new Map([[PR_URL, madeSession]]),
-            reviewed: new Map<string, PrSession>(),
+            made: new Map([[PR_URL, [madeSession, olderSession]]]),
+            reviewed: new Map([[PR_URL, [reviewSession]]]),
         }),
         ...services,
     });
@@ -189,6 +248,7 @@ describe("PR page", () => {
             "Auto-merge enabled (squash) by alice - merges on its own once checks and reviews pass",
         );
         expect(within(subhead).getByText("Conflicts")).toBeTruthy();
+        expect((await within(subhead).findByTitle("Level 2 of 3 in this stack")).textContent).toBe("2/3");
         // Only the open thread counts; the resolved one came on the second page.
         await waitFor(() => expect(within(subhead).getByText("1 unresolved")).toBeTruthy());
         expect(
@@ -239,6 +299,101 @@ describe("PR page", () => {
 
         const comment = within(conversation).getByText("Looks close.").closest(".timeline-card") as HTMLElement;
         expect(comment.textContent).toContain("carol commented");
+    });
+
+    it("shows reviewers, assignees, labels, linked issues and the milestone in the sidebar", async () => {
+        open("/acme/widgets/pull/12");
+        await heading();
+        const section = (name: string) => screen.getByRole("region", { name });
+        const reviewers = [...section("Reviewers").querySelectorAll("li")].map((row) => row.textContent);
+        expect(reviewers).toEqual(["bobChanges requested", "daveAwaiting review"]);
+        expect(within(section("Assignees")).getByRole("link", { name: "alice" })).toBeTruthy();
+        expect(within(section("Labels")).getByText("backend")).toBeTruthy();
+        expect(within(section("Linked issues")).getByRole("link", { name: "#7 Gears slip" }).getAttribute("href")).toBe(
+            "https://github.com/acme/widgets/issues/7",
+        );
+        expect(within(section("Milestone")).getByRole("link", { name: "Gearbox v2" })).toBeTruthy();
+    });
+
+    it("shows the stack the PR sits in, each member opening here", async () => {
+        const { router } = open("/acme/widgets/pull/12");
+        await heading();
+        const stack = await screen.findByRole("region", { name: "Stack of 3" });
+        // Tip first: carol's PR on top, bob's at the bottom on main.
+        expect([...stack.querySelectorAll(".stack-member")].map((row) => row.textContent)).toEqual([
+            "#14 Paint the gearscarol",
+            "#12 Turn the gearsalice",
+            "#11 Mount the gearsbob",
+        ]);
+        expect(stack.querySelector('[aria-current="page"]')?.textContent).toContain("#12");
+        expect(within(stack).getByText("onto main")).toBeTruthy();
+        expect(screen.getByTitle("Level 2 of 3 in this stack").textContent).toBe("2/3");
+
+        fireEvent.click(within(stack).getByRole("link", { name: "#11 Mount the gears" }));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/acme/widgets/pull/11"));
+    });
+
+    it("lists every Claude session behind the PR, the most recent first", async () => {
+        open("/acme/widgets/pull/12");
+        await heading();
+        const sessions = await screen.findByRole("region", { name: "Sessions" });
+        await waitFor(() => expect(sessions.querySelectorAll("li")).toHaveLength(3));
+        const rows = [...sessions.querySelectorAll("li")];
+        expect(rows.map((row) => row.querySelector(".session-title")?.textContent)).toEqual([
+            "Review the gears",
+            "Gear work",
+            "Gear spike",
+        ]);
+        expect(rows[0]?.querySelector("a")?.getAttribute("href")).toBe(
+            `vscode://anthropic.claude-code/open?session=${reviewSession.id}`,
+        );
+        expect(rows[2]?.className).toBe("archived");
+        expect(rows[2]?.querySelector(".session-meta")?.textContent).toBe("made · 7d ago · archived");
+    });
+
+    it("says in the merge box what stands in the way", async () => {
+        open("/acme/widgets/pull/12");
+        await heading();
+        const box = screen.getByRole("region", { name: "Merge status" });
+        expect([...box.querySelectorAll(".merge-row")].map((row) => row.textContent)).toEqual([
+            "✕Changes requested",
+            "✓All checks have passed4 successful",
+            "✕This branch has conflicts that must be resolvedwith mid",
+            "✓Auto-merge enabled (squash) by alicemerges once checks and reviews pass",
+        ]);
+    });
+
+    it("steps to the next and previous PR in the list with ] and [", async () => {
+        const { router } = open("/acme/widgets/pull/12");
+        await heading();
+        const next = await screen.findByRole("link", { name: "Next ›" });
+        expect(next.getAttribute("href")).toBe("/acme/gadgets/pull/13");
+        expect(screen.getByText("‹ Previous").getAttribute("aria-disabled")).toBe("true");
+
+        fireEvent.keyDown(document.body, { key: "]" });
+        await waitFor(() => expect(router.state.location.pathname).toBe("/acme/gadgets/pull/13"));
+        fireEvent.keyDown(document.body, { key: "[" });
+        await waitFor(() => expect(router.state.location.pathname).toBe("/acme/widgets/pull/12"));
+    });
+
+    it("reads the PR again in live mode once its own change check moves", async () => {
+        localStorage.setItem("refresh_interval", "live");
+        let probes = 0;
+        server.use(
+            github.query("PullRequestProbe", () => {
+                probes++;
+                return HttpResponse.json({
+                    data: { repository: { pullRequest: { ...fields, updatedAt: "2026-11-27T11:00:00Z" } } },
+                });
+            }),
+        );
+        open("/acme/widgets/pull/12");
+        await heading();
+        expect(detailRequests).toBe(1);
+
+        document.dispatchEvent(new Event("visibilitychange"));
+        await waitFor(() => expect(detailRequests).toBe(2));
+        expect(probes).toBe(1);
     });
 
     it("lists the commits by day", async () => {

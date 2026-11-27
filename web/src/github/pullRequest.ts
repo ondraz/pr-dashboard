@@ -1,3 +1,4 @@
+import { prFingerprint } from "../logic/fingerprint.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { type GitHubClient, graphql } from "./client.ts";
 import type {
@@ -9,6 +10,7 @@ import type {
 import {
     pullRequestCommitsQuery,
     pullRequestDetailQuery,
+    pullRequestProbeQuery,
     reviewThreadDetailPageQuery,
     timelinePageQuery,
 } from "./pullRequestDocuments.ts";
@@ -107,4 +109,12 @@ export async function loadPullRequestCommits(client: GitHubClient, route: PrRout
     if (!first) throw new PullRequestNotFound(route);
     const { nodes } = await collectPages(first, read);
     return { commits: nodes.map((node) => node.commit), totalCount: first.totalCount };
+}
+
+/** The open PR's live check: one point of the GraphQL budget per read. */
+export async function readPullRequestFingerprint(client: GitHubClient, route: PrRoute): Promise<string> {
+    const { data } = await graphql(client, pullRequestProbeQuery, variablesOf(route));
+    const pr = data.repository?.pullRequest;
+    if (!pr) throw new PullRequestNotFound(route);
+    return prFingerprint(pr);
 }

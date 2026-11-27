@@ -4,7 +4,6 @@ import { useAuth } from "../app/AuthProvider.tsx";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useRememberListEntry } from "../app/listReturn.tsx";
 import { SignIn } from "../app/SignIn.tsx";
-import { usePersistedChoice } from "../app/storage.ts";
 import type { DashboardView } from "../app/useDashboard.ts";
 import { type AgeFilter, applyFilters, type StatusFilter } from "../logic/filters.ts";
 import { featureId, listLayout } from "../logic/layout.ts";
@@ -12,7 +11,8 @@ import { REFRESH_MODES, type RefreshMode } from "../logic/refresh.ts";
 import { TABS, type Tab } from "../logic/tabs.ts";
 import { timeAgo } from "../logic/time.ts";
 import { useSetCollapsed } from "./collapse.tsx";
-import { type Grouping, MineList } from "./MineList.tsx";
+import { type Grouping, useListView } from "./listView.ts";
+import { MineList } from "./MineList.tsx";
 import { ReviewedList, WaitingList } from "./ReviewLists.tsx";
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -179,10 +179,7 @@ export function ListPage() {
     const setCollapsed = useSetCollapsed();
     const auth = useAuth();
     const { credentials } = auth;
-    const [tab, setTab] = usePersistedChoice<Tab>("tab", TABS, "mine");
-    const [status, setStatus] = usePersistedChoice<StatusFilter>("status_filter", ["all", "open", "draft"], "all");
-    const [age, setAge] = usePersistedChoice<AgeFilter>("age_filter", ["recent", "all"], "recent");
-    const [grouping, setGrouping] = usePersistedChoice<Grouping>("grouping", ["repo", "feature"], "repo");
+    const { tab, setTab, status, setStatus, age, setAge, grouping, setGrouping } = useListView();
     const [scrollTo, setScrollTo] = useState<string | null>(null);
     const dashboard = useDashboardState();
     useRememberListEntry();

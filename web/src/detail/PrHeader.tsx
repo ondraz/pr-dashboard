@@ -1,12 +1,11 @@
-import { useMemo } from "react";
-import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { CommentIcon, ConflictIcon, MergeIcon, PrDraftIcon, PrOpenIcon } from "../list/icons.tsx";
 import { External, GitHubLink, MergeBadge, SessionBadge } from "../list/PrRows.tsx";
 import { unresolvedBadge } from "../logic/badges.ts";
-import { buildFeatureGroups } from "../logic/layout.ts";
 import type { AutoMerge } from "../logic/stacks.ts";
 import { prUnresolvedSummary } from "../logic/unresolved.ts";
+import { usePrListContext } from "./listContext.ts";
 import { useOpenPr } from "./PrContext.tsx";
+import { usePullRequestStack } from "./usePullRequest.ts";
 
 const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? "" : "s"}`;
 
@@ -35,28 +34,13 @@ function StatePill({ state, draft }: { state: string; draft: boolean }) {
     );
 }
 
-/** Where the list knows this PR from: its cross-repo set, and the Claude sessions behind it. */
-function useListContext(url: string) {
-    const { data } = useDashboardState();
-    return useMemo(() => {
-        if (!data) return { feature: null, made: undefined, reviewed: undefined };
-        const mine = data.mine.find((pr) => pr.html_url === url);
-        const group = mine?.feature
-            ? buildFeatureGroups(data.mine, data.repoNodes).find((candidate) => candidate.key === mine.feature?.key)
-            : undefined;
-        return {
-            feature: group ? { label: group.label, repoCount: group.repos.size } : null,
-            made: data.sessions.made.get(url),
-            reviewed: data.sessions.reviewed.get(url),
-        };
-    }, [data, url]);
-}
-
 /** Title, state, branches and the list's badges. */
 export function PrHeader() {
-    const { detail } = useOpenPr();
+    const { route, detail } = useOpenPr();
     const { pr, threads } = detail;
-    const { feature, made, reviewed } = useListContext(pr.url);
+    const { feature, made, reviewed } = usePrListContext(pr.url);
+    const stack = usePullRequestStack(route).data ?? [];
+    const position = stack.find((node) => node.number === pr.number);
     const unresolved = unresolvedBadge({
         html_url: pr.url,
         ...prUnresolvedSummary(threads, pr.reviews?.nodes ?? []),
@@ -82,6 +66,14 @@ export function PrHeader() {
             </h1>
             <div className="pr-subhead">
                 <StatePill state={pr.state} draft={pr.isDraft} />
+                {position?.stack && (
+                    <span
+                        className="stack-pos"
+                        title={`Level ${position.depth} of ${position.stack.maxDepth} in this stack`}
+                    >
+                        {position.depth}/{position.stack.maxDepth}
+                    </span>
+                )}
                 <span className="pr-summary">
                     <External href={pr.author?.url ?? `https://github.com/${author}`}>{author}</External>
                     {pr.state === "MERGED" ? ` merged ${commits} into ` : ` wants to merge ${commits} into `}
@@ -108,8 +100,8 @@ export function PrHeader() {
                         {feature.label} · {feature.repoCount} repos
                     </span>
                 )}
-                <SessionBadge session={made} sessionRole="made" />
-                <SessionBadge session={reviewed} sessionRole="reviewed" />
+                <SessionBadge session={made[0]} sessionRole="made" />
+                <SessionBadge session={reviewed[0]} sessionRole="reviewed" />
             </div>
         </div>
     );

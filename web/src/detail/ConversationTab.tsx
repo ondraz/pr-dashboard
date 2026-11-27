@@ -13,6 +13,7 @@ import {
 import { labelColor } from "../logic/labels.ts";
 import { timeAgo } from "../logic/time.ts";
 import { Markdown } from "./Markdown.tsx";
+import { MergeBox } from "./MergeBox.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 
 interface Actor {
@@ -290,6 +291,7 @@ export function ConversationTab() {
                     <External href={pr.url}>the rest is on GitHub</External>.
                 </div>
             )}
+            <MergeBox />
         </div>
     );
 }

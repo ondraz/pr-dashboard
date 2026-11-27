@@ -130,9 +130,34 @@ export function pullRequestFields(extra: Partial<PullRequestFields> = {}): PullR
         isCrossRepository: false,
         body: "Turns them.",
         bodyHTML: "<p>Turns them.</p>",
+        headRefOid: "tip-sha",
         mergeable: "MERGEABLE",
+        mergeStateStatus: "CLEAN",
+        reviewDecision: "REVIEW_REQUIRED",
+        headCommit: {
+            nodes: [
+                {
+                    commit: {
+                        oid: "tip-sha",
+                        statusCheckRollup: {
+                            state: "SUCCESS",
+                            contexts: {
+                                checkRunCountsByState: [{ state: "SUCCESS", count: 4 }],
+                                statusContextCountsByState: [],
+                            },
+                        },
+                    },
+                },
+            ],
+        },
         autoMergeRequest: null,
         mergeQueueEntry: null,
+        reviewRequests: { nodes: [] },
+        latestReviews: { nodes: [] },
+        assignees: { nodes: [] },
+        labels: { nodes: [] },
+        milestone: null,
+        closingIssuesReferences: { nodes: [] },
         changedFiles: 3,
         commits: { totalCount: 2 },
         reviews: { nodes: [] },

@@ -56,3 +56,35 @@ export class ChangeFingerprint {
         );
     }
 }
+
+/** The fields of one PR its live check reads. */
+export interface PrProbe {
+    updatedAt: string;
+    state: string;
+    isDraft: boolean;
+    headRefOid: string;
+    mergeable: string;
+    mergeStateStatus: string;
+    reviewDecision: string | null;
+    mergeQueueEntry?: { position: number } | null;
+    headCommit: { nodes?: readonly ({ commit: { statusCheckRollup: { state: string } | null } } | null)[] | null };
+}
+
+/**
+ * Everything that changes what an open PR's page shows. `updatedAt` moves with comments, reviews,
+ * pushes and edits, but not when a check finishes or GitHub works out mergeability, so those count
+ * on their own.
+ */
+export function prFingerprint(pr: PrProbe): string {
+    return JSON.stringify([
+        pr.updatedAt,
+        pr.state,
+        pr.isDraft,
+        pr.headRefOid,
+        pr.mergeable,
+        pr.mergeStateStatus,
+        pr.reviewDecision,
+        pr.mergeQueueEntry?.position ?? null,
+        pr.headCommit.nodes?.[0]?.commit.statusCheckRollup?.state ?? null,
+    ]);
+}

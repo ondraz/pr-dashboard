@@ -11,6 +11,7 @@ import { readChangeFingerprint } from "./changeCheck.ts";
 import type { GitHubClient } from "./client.ts";
 import { fetchOutstandingWork } from "./outstanding.ts";
 import { type PrRef, repoOfSearchHit, splitRepo } from "./repos.ts";
+import { fetchOpenPrByHead } from "./stack.ts";
 import { type FindPrByHead, fetchStackParents } from "./stackParents.ts";
 
 export type SearchHit = Endpoints["GET /search/issues"]["response"]["data"]["items"][number];
@@ -175,21 +176,8 @@ export async function loadDashboard(
                 per_page: 100,
             });
         });
-    const findByHead: FindPrByHead = async (repoFullName, label) => {
-        const list = await orNull(`the PR with head ${label} in ${repoFullName}`, async () => {
-            const { owner, repo } = splitRepo(repoFullName);
-            return (
-                await client.request("GET /repos/{owner}/{repo}/pulls", {
-                    owner,
-                    repo,
-                    state: "open",
-                    head: label,
-                    per_page: 1,
-                })
-            ).data;
-        });
-        return list?.[0] ?? null;
-    };
+    const findByHead: FindPrByHead = (repoFullName, label) =>
+        orNull(`the PR with head ${label} in ${repoFullName}`, () => fetchOpenPrByHead(client, repoFullName, label));
 
     const withMyReview = async (hit: SearchHit) => {
         const ref = refOf(hit);

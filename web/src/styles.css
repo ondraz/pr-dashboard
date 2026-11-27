@@ -1533,3 +1533,197 @@ code.branch {
     border-top: 1px solid var(--color-border);
     margin: 16px 0;
 }
+
+.detail-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 32px;
+    align-items: start;
+}
+@media (max-width: 900px) {
+    .detail-body {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+.detail-body .conversation {
+    max-width: none;
+}
+
+.pr-steps {
+    display: inline-flex;
+    gap: 4px;
+}
+.step-btn {
+    font-size: 13px;
+    color: var(--color-text);
+    text-decoration: none;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 3px 10px;
+    background: var(--color-bg);
+    white-space: nowrap;
+}
+a.step-btn:hover {
+    border-color: var(--color-text-secondary);
+}
+.step-btn[aria-disabled="true"] {
+    color: var(--color-text-secondary);
+    opacity: 0.5;
+}
+
+.pr-sidebar {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+}
+.sidebar-section {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+.sidebar-section:first-child {
+    padding-top: 0;
+}
+.sidebar-section:last-child {
+    border-bottom: none;
+}
+.sidebar-section h2 {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+}
+.sidebar-section .muted {
+    font-size: 12px;
+}
+.sidebar-section a {
+    color: var(--color-text);
+    text-decoration: none;
+}
+.sidebar-section a:hover {
+    color: var(--color-link);
+}
+.sidebar-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.sidebar-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.sidebar-labels {
+    flex-wrap: wrap;
+    margin-left: 0;
+}
+
+.stack-members {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    border-left: 2px solid var(--color-stack-rail);
+    margin: 4px 0 4px 7px;
+}
+.stack-member {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 0 3px 8px;
+    min-width: 0;
+}
+.stack-member .pr-status svg {
+    width: 14px;
+    height: 14px;
+}
+.stack-member-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.stack-member.current .stack-member-title {
+    font-weight: 600;
+}
+.stack-member-number {
+    color: var(--color-text-secondary);
+}
+.stack-member-author {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+}
+.pr-sidebar .stack-name {
+    display: block;
+    margin: 0 0 6px;
+}
+.pr-sidebar .stack-onto {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.session-list li {
+    justify-content: flex-start;
+}
+.session-list li.archived {
+    opacity: 0.6;
+}
+.session-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.session-meta {
+    width: 100%;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.merge-box {
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.merge-row {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 16px;
+    font-size: 14px;
+}
+.merge-row + .merge-row {
+    border-top: 1px solid var(--color-border);
+}
+.merge-mark {
+    width: 16px;
+    text-align: center;
+    font-weight: 700;
+}
+.merge-title {
+    font-weight: 600;
+}
+.merge-detail {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+}
+.tone-ok .merge-mark {
+    color: var(--color-open);
+}
+.tone-warn .merge-mark,
+.tone-pending .merge-mark {
+    color: var(--color-ci-pending);
+}
+.tone-fail .merge-mark {
+    color: var(--color-closed);
+}
+.tone-neutral .merge-mark {
+    color: var(--color-text-secondary);
+}
+.tone-merged .merge-mark {
+    color: var(--color-merged);
+}

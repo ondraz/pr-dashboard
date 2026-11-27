@@ -35,6 +35,12 @@ const flakyTestCli: PrSession = {
     archived: false,
     lastActivityAt: 1700000300000,
 };
+const olderFlakyTest: PrSession = {
+    id: "local_66666666-6666-4666-8666-666666666666",
+    title: "Older session on the flaky test",
+    archived: false,
+    lastActivityAt: 1700000050000,
+};
 const gadgetsCli: PrSession = {
     id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
     kind: "cli",
@@ -64,19 +70,19 @@ afterEach(async () => {
 });
 
 describe("SessionIndex", () => {
-    it("maps each PR to the newest session that made it and that reviewed it", async () => {
+    it("maps each PR to every session that made it and that reviewed it, newest first", async () => {
         expect(await index.read()).toEqual({
             made: {
-                [`${W}1`]: csvExport,
-                [`${G}7`]: archivedDesktop,
-                [`${W}3`]: flakyTestCli,
+                [`${W}1`]: [csvExport],
+                [`${G}7`]: [archivedDesktop, gadgetsCli, csvExport],
+                [`${W}3`]: [flakyTestCli, olderFlakyTest],
             },
             reviewed: {
-                [`${G}10`]: csvExport,
-                [`${G}11`]: flakyTestCli,
-                [`${G}13`]: flakyTestCli,
-                [`${G}14`]: flakyTestCli,
-                [`${G}16`]: gadgetsCli,
+                [`${G}10`]: [csvExport],
+                [`${G}11`]: [flakyTestCli],
+                [`${G}13`]: [flakyTestCli],
+                [`${G}14`]: [flakyTestCli],
+                [`${G}16`]: [gadgetsCli],
             },
         });
     });
@@ -91,7 +97,7 @@ describe("SessionIndex", () => {
         const path = join(root, "projects", TRANSCRIPTS.gadgets);
         await writeFile(path, "");
         await touch(TRANSCRIPTS.gadgets, 1700000150);
-        expect((await index.read()).reviewed[`${G}16`]).toEqual(gadgetsCli);
+        expect((await index.read()).reviewed[`${G}16`]).toEqual([gadgetsCli]);
 
         await touch(TRANSCRIPTS.gadgets, 1700000160);
         expect((await index.read()).reviewed[`${G}16`]).toBeUndefined();
@@ -101,7 +107,7 @@ describe("SessionIndex", () => {
         await index.read();
         await rm(join(root, "projects", TRANSCRIPTS.flakyTest));
         const { made, reviewed } = await index.read();
-        expect(made[`${W}3`]?.id).toBe("local_66666666-6666-4666-8666-666666666666");
+        expect(made[`${W}3`]).toEqual([olderFlakyTest]);
         expect(reviewed[`${G}11`]).toBeUndefined();
     });
 });
