@@ -304,6 +304,10 @@ describe("new since you last opened", () => {
         await waitFor(() => expect(lastOpened().head).toBe(HEAD));
         expect(Date.parse(lastOpened().at)).toBeGreaterThan(Date.parse("2026-11-25T10:30:00Z"));
         expect(screen.getByText(/3 new entries/)).toBeTruthy();
+
+        // Narrowed to what is unresolved, the force-push is out of sight and out of the count.
+        fireEvent.click(screen.getByRole("button", { name: "Unresolved 1" }));
+        expect(screen.getByText(/2 new entries/)).toBeTruthy();
     });
 
     it("never marks the reader's own", async () => {
