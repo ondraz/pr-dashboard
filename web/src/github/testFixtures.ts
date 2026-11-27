@@ -64,11 +64,52 @@ export function thread(isResolved: boolean, starter: string, lastAuthor: string,
 
 export function outstanding(
     threads: ReturnType<typeof thread>[],
-    { reviews = [] as unknown[], nextCursor = null as string | null, mergeQueueEntry = null as unknown } = {},
+    {
+        reviews = [] as unknown[],
+        nextCursor = null as string | null,
+        mergeQueueEntry = null as unknown,
+        isDraft = false,
+        headRefOid = "head-sha",
+        verdicts = [] as { state: string; author: { login: string } }[],
+        viewerReviews = undefined as unknown[] | undefined,
+    } = {},
 ) {
     return {
         reviewThreads: { pageInfo: { hasNextPage: nextCursor !== null, endCursor: nextCursor }, nodes: threads },
         reviews: { nodes: reviews },
         mergeQueueEntry,
+        isDraft,
+        headRefOid,
+        latestOpinionatedReviews: { nodes: verdicts },
+        ...(viewerReviews ? { viewerReviews: { nodes: viewerReviews } } : {}),
     };
+}
+
+/**
+ * What the batched query answers for one PR, as GitHub would: its threads, draft state and head,
+ * each reviewer's latest approval or change request, and the viewer's own reviews when asked.
+ */
+export function batchPullRequest(
+    pull: ReturnType<typeof pullJson> | undefined,
+    reviews: readonly ReturnType<typeof review>[],
+    threads: ReturnType<typeof thread>[],
+    viewer: string | null,
+) {
+    const latest = new Map<string, ReturnType<typeof review>>();
+    for (const one of reviews) if (one.state !== "COMMENTED") latest.set(one.user.login, one);
+    return outstanding(threads, {
+        isDraft: !!pull?.draft,
+        headRefOid: pull?.head.sha ?? "unknown-sha",
+        verdicts: [...latest.values()].map((one) => ({ state: one.state, author: one.user })),
+        viewerReviews: viewer
+            ? reviews
+                  .filter((one) => one.user.login === viewer)
+                  .map((one) => ({
+                      state: one.state,
+                      submittedAt: one.submitted_at,
+                      commit: { oid: one.commit_id },
+                      author: one.user,
+                  }))
+            : undefined,
+    });
 }

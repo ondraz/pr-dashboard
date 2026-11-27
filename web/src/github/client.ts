@@ -3,7 +3,14 @@ import { Octokit } from "@octokit/core";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
 import type { OctokitResponse } from "@octokit/types";
 import { EtagCache } from "./etagCache.ts";
-import { RateLimitError, RateLimits, rateLimitError, readRateLimit } from "./rateLimits.ts";
+import {
+    RateLimitError,
+    RateLimits,
+    RequestPause,
+    rateLimitError,
+    readRateLimit,
+    unansweredError,
+} from "./rateLimits.ts";
 
 const GitHubOctokit = Octokit.plugin(paginateRest);
 
@@ -64,10 +71,13 @@ export function createGitHubClient({
         },
     });
     const cache = new EtagCache<OctokitResponse<unknown>>(etagCapacity);
+    const pause = new RequestPause();
 
     octokit.hook.wrap("request", async (request, options) => {
         const conditional = options.method === "GET";
         const { url, headers } = octokit.request.endpoint.parse(options);
+        const held = pause.check(url);
+        if (held) throw held;
         const key = `${url} ${headers.accept ?? ""}`;
         const cached = conditional ? cache.get(key) : undefined;
         // Inner hooks (token auth) are bound to this same options object, so the header has to go on it.
@@ -77,22 +87,50 @@ export function createGitHubClient({
                 ? await withSource(source, () => request(options), options.headers)
                 : await request(options);
             rateLimits.record(response.headers);
+            const exhausted = graphqlLimitError(url, response);
+            if (exhausted) pause.hold(exhausted);
             const etag = response.headers.etag;
             // Pagination rewrites a search response in place, so the cache keeps its own copy.
             if (conditional && typeof etag === "string") cache.set(key, etag, structuredClone(response));
             return response;
         } catch (error) {
+            if (isUnanswered(error)) {
+                const unanswered = unansweredError();
+                pause.hold(unanswered);
+                throw unanswered;
+            }
             if (!isErrorWithResponse(error) || !error.response) throw error;
             rateLimits.record(error.response.headers);
             if (error.status === 304 && cached) {
                 const kept = structuredClone(cached.value);
                 return { ...kept, headers: { ...kept.headers, ...error.response.headers } };
             }
-            throw rateLimitError(error.status, error.response.headers, errorMessage(error.response)) ?? error;
+            const limited = rateLimitError(error.status, error.response.headers, errorMessage(error.response));
+            if (limited) pause.hold(limited);
+            throw limited ?? error;
         }
     });
 
     return octokit;
+}
+
+/** Octokit's error for a fetch the browser failed before any response came back. */
+function isUnanswered(error: unknown): boolean {
+    return (
+        isErrorWithResponse(error) &&
+        !error.response &&
+        error.status === 500 &&
+        (error as { cause?: unknown }).cause instanceof TypeError
+    );
+}
+
+/** GraphQL reports an exhausted limit with a 200 and a RATE_LIMITED error; the pause holds it like a refusal. */
+function graphqlLimitError(url: string, response: OctokitResponse<unknown>): RateLimitError | null {
+    if (new URL(url).pathname !== "/graphql") return null;
+    const errors = (response.data as { errors?: { type?: string }[] } | null)?.errors;
+    if (!errors?.some((error) => error.type === "RATE_LIMITED")) return null;
+    const limit = readRateLimit(response.headers);
+    return new RateLimitError("graphql", limit?.resetAt ?? Date.now() + 60_000);
 }
 
 /** Sends with the source's current token, and once more with a fresh one if GitHub refuses it. */

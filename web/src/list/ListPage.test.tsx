@@ -8,7 +8,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { DeviceCodePayload, PollPayload, TokenPayload } from "../../../shared/auth.ts";
 import type { PrSession } from "../../../shared/sessions.ts";
 import type { AuthApi } from "../app/auth.ts";
-import { outstanding, pullJson, review, searchHit, thread } from "../github/testFixtures.ts";
+import { batchPullRequest, pullJson, review, searchHit, thread } from "../github/testFixtures.ts";
 import { renderApp } from "../testApp.tsx";
 
 const API = "https://api.github.com";
@@ -50,13 +50,13 @@ const pulls: Record<string, ReturnType<typeof pullJson>> = {
     "acme/gadgets#30": pullJson("acme/gadgets", 30, "bobs-fix", "main", { user: { login: "bob" } }),
     "acme/widgets#40": pullJson("acme/widgets", 40, "carols-fix", "main", { user: { login: "carol" } }),
 };
-const reviews: Record<string, unknown[]> = {
+const reviews: Record<string, ReturnType<typeof review>[]> = {
     "acme/widgets#11": [review("bob", "APPROVED", "mid-sha")],
     "acme/gadgets#30": [review("alice", "CHANGES_REQUESTED", "older-sha")],
     "acme/widgets#40": [review("alice", "APPROVED", "carols-fix-sha")],
 };
-const threads: Record<string, ReturnType<typeof outstanding>> = {
-    "acme/widgets#12": outstanding([thread(false, "bob", "bob", "PRR_1", 3), thread(true, "bob", "alice")]),
+const threads: Record<string, ReturnType<typeof thread>[]> = {
+    "acme/widgets#12": [thread(false, "bob", "bob", "PRR_1", 3), thread(true, "bob", "alice")],
 };
 
 const handlers = [
@@ -89,7 +89,10 @@ const handlers = [
         const data: Record<string, unknown> = {};
         for (let n = 0; `number${n}` in variables; n++) {
             const key = `${variables[`owner${n}`]}/${variables[`name${n}`]}#${variables[`number${n}`]}`;
-            data[`pr${n}`] = { pullRequest: threads[key] ?? outstanding([]) };
+            const viewer = variables.withViewer ? String(variables.viewer) : null;
+            data[`pr${n}`] = {
+                pullRequest: batchPullRequest(pulls[key], reviews[key] ?? [], threads[key] ?? [], viewer),
+            };
         }
         return HttpResponse.json({ data });
     }),

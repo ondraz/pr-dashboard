@@ -17,8 +17,11 @@ export class RateLimitError extends Error {
     /** Milliseconds since the epoch at which a retry can succeed. */
     readonly resetAt: number;
 
-    constructor(resource: string, resetAt: number) {
-        super(`GitHub rate limit reached for ${resource}; it resets at ${new Date(resetAt).toLocaleTimeString()}`);
+    constructor(resource: string, resetAt: number, message?: string) {
+        super(
+            message ??
+                `GitHub rate limit reached for ${resource}; it resets at ${new Date(resetAt).toLocaleTimeString()}`,
+        );
         this.resource = resource;
         this.resetAt = resetAt;
     }
@@ -95,4 +98,54 @@ export class RateLimits {
         this.#listeners.add(listener);
         return () => this.#listeners.delete(listener);
     };
+}
+
+/** The bucket a request to `url` counts against. */
+export function bucketOf(url: string): string {
+    const path = new URL(url, "https://api.github.com").pathname;
+    if (path === "/graphql") return "graphql";
+    if (path.startsWith("/search/")) return "search";
+    return "core";
+}
+
+/**
+ * Requests held back after GitHub refused one for a limit, until the limit resets. A refresh reads a
+ * hundred things at once; without this, the requests still queued would keep going out after the
+ * first refusal, and GitHub lengthens a secondary limit for every request it has to turn away. An
+ * exhausted primary limit holds its own bucket; a secondary limit, or one of unknown kind, holds all.
+ */
+export class RequestPause {
+    readonly #until = new Map<string, RateLimitError>();
+
+    hold(error: RateLimitError): void {
+        const key = ["core", "search", "graphql"].includes(error.resource) ? error.resource : "all";
+        const held = this.#until.get(key);
+        if (!held || held.resetAt < error.resetAt) this.#until.set(key, error);
+    }
+
+    /** The refusal still standing for a request to `url`, if any. */
+    check(url: string, now: number = Date.now()): RateLimitError | null {
+        for (const key of [bucketOf(url), "all"]) {
+            const held = this.#until.get(key);
+            if (!held) continue;
+            if (held.resetAt > now) return held;
+            this.#until.delete(key);
+        }
+        return null;
+    }
+}
+
+// GitHub's answer to a request over its secondary limit sometimes lacks CORS headers, and the
+// browser then reports only that the request failed. The same failure means the network is down;
+// either way, waiting a little before the next request is right.
+const UNANSWERED_PAUSE_MS = 30_000;
+
+/** The pause for a request the browser saw fail without any response from GitHub. */
+export function unansweredError(now: number = Date.now()): RateLimitError {
+    const resetAt = now + UNANSWERED_PAUSE_MS;
+    return new RateLimitError(
+        "secondary",
+        resetAt,
+        `GitHub did not answer (the network is down, or GitHub's secondary rate limit refused the request); trying again after ${new Date(resetAt).toLocaleTimeString()}`,
+    );
 }

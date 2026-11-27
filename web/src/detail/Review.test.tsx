@@ -67,6 +67,15 @@ const server = setupServer(
         }),
     ),
     github.query("PullRequestDetail", () => HttpResponse.json(pullRequestResponse(fields, [], threads))),
+    github.query("PullRequestViewedFiles", () =>
+        HttpResponse.json({
+            data: {
+                repository: {
+                    pullRequest: { files: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } },
+                },
+            },
+        }),
+    ),
     github.query("CommitChecks", () => HttpResponse.json(commitChecksResponse(null))),
     github.query("PullRequestCommits", () =>
         HttpResponse.json({

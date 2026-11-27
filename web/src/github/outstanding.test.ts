@@ -28,7 +28,7 @@ describe("fetchOutstandingWork", () => {
         const number3Error = [{ message: "Could not resolve to a Repository" }];
         server.use(
             github.query("OutstandingWorkBatch", ({ variables }) => {
-                const count = Object.keys(variables).length / 3;
+                const count = Object.keys(variables).filter((name) => name.startsWith("number")).length;
                 batchSizes.push(count);
                 const data: Record<string, unknown> = {};
                 for (let n = 0; n < count; n++) {
@@ -82,6 +82,59 @@ describe("fetchOutstandingWork", () => {
         expect(work.has("acme/widgets#3")).toBe(false);
         expect(progress).toHaveLength(2);
         expect(progress.at(-1)).toBe(12);
+    });
+
+    it("reads draft state, head and reviews, and the viewer's own reviews only when asked", async () => {
+        const asked: unknown[] = [];
+        server.use(
+            github.query("OutstandingWorkBatch", ({ variables }) => {
+                asked.push({ viewer: variables.viewer, withViewer: variables.withViewer });
+                return HttpResponse.json({
+                    data: {
+                        pr0: {
+                            pullRequest: outstanding([], {
+                                isDraft: true,
+                                headRefOid: "tip-sha",
+                                verdicts: [{ state: "APPROVED", author: { login: "bob" } }],
+                                viewerReviews: variables.withViewer
+                                    ? [
+                                          {
+                                              state: "CHANGES_REQUESTED",
+                                              submittedAt: "2026-11-24T10:00:00Z",
+                                              commit: { oid: "old-sha" },
+                                              author: { login: "alice" },
+                                          },
+                                      ]
+                                    : undefined,
+                            }),
+                        },
+                    },
+                });
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        const pr = [{ repoFullName: "acme/widgets", number: 1 }];
+
+        const plain = (await fetchOutstandingWork(client, pr)).get("acme/widgets#1");
+        expect(plain).toMatchObject({
+            isDraft: true,
+            headSha: "tip-sha",
+            verdicts: [{ state: "APPROVED", user: { login: "bob" } }],
+            viewerReviews: null,
+        });
+        const viewer = (await fetchOutstandingWork(client, pr, { login: "alice" })).get("acme/widgets#1");
+        expect(viewer?.viewerReviews).toEqual([
+            {
+                state: "CHANGES_REQUESTED",
+                user: { login: "alice" },
+                commit_id: "old-sha",
+                submitted_at: "2026-11-24T10:00:00Z",
+            },
+        ]);
+        expect(asked).toEqual([
+            { viewer: null, withViewer: false },
+            { viewer: "alice", withViewer: true },
+        ]);
     });
 
     it("stops paging after 500 threads", async () => {
