@@ -17,8 +17,10 @@ import { PrContext } from "./PrContext.tsx";
 import { PrHeader } from "./PrHeader.tsx";
 import { PrSteps } from "./PrSteps.tsx";
 import { ReviewButton, ReviewPanel } from "./ReviewPanel.tsx";
+import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { SuggestionBatch } from "./Suggestions.tsx";
+import { useLastOpened } from "./useLastOpened.ts";
 import { prQueryKey, usePullRequest, usePullRequestLiveCheck } from "./usePullRequest.ts";
 
 function BackButton() {
@@ -105,7 +107,8 @@ export function PrPage() {
     const [reviewing, setReviewing] = useState(false);
     const [agent, setAgent] = useState<AgentTask | null>(null);
     usePullRequestLiveCheck(route, data, isFetching);
-    const open = useMemo(() => (data ? { route, detail: data } : null), [route, data]);
+    const lastOpened = useLastOpened(route, data?.pr.headRefOid, query.dataUpdatedAt);
+    const open = useMemo(() => (data ? { route, detail: data, lastOpened } : null), [route, data, lastOpened]);
     // The diff takes the whole width, as on GitHub.
     const matchRoute = useMatchRoute();
     const wide =
@@ -191,6 +194,7 @@ export function PrPage() {
                 <div className="detail-nav">
                     <BackButton />
                     <PrSteps url={githubPrUrl(route)} />
+                    <ShortcutsHelp />
                     <span className="detail-repo">
                         <RepoIcon />
                         <External href={`https://github.com/${owner}/${repo}`}>

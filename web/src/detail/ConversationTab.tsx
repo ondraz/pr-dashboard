@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
+import { useKeys } from "../app/keys.ts";
 import { useWriteAccess } from "../app/writeAccess.tsx";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { CommitIcon } from "../list/icons.tsx";
@@ -9,15 +10,20 @@ import {
     type CommitNode,
     type ConversationItem,
     type EventNode,
+    itemMoments,
     type ReviewNode,
+    unresolvedOnly,
 } from "../logic/conversation.ts";
 import { labelColor } from "../logic/labels.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
+import { timeAgo } from "../logic/time.ts";
+import { prUnresolvedSummary } from "../logic/unresolved.ts";
 import { CommentBody } from "./CommentBody.tsx";
 import { MergeBox } from "./MergeBox.tsx";
+import { NewTag, useIsNew } from "./NewTag.tsx";
 import { PrComment } from "./PrComment.tsx";
 import { useOpenPr } from "./PrContext.tsx";
-import { Thread, When, Who } from "./Thread.tsx";
+import { stepThread, Thread, When, Who } from "./Thread.tsx";
 
 function Card({ header, children }: { header: ReactNode; children: ReactNode }) {
     return (
@@ -41,6 +47,7 @@ function Review({ review, threads }: { review: ReviewNode; threads: ReviewThread
         <div className={`timeline-review review-${review.state.toLowerCase()}`}>
             <div className="timeline-event">
                 <Who actor={review.author} /> {verb} <When at={at} href={review.url} />
+                <NewTag at={at} author={review.author?.login} />
             </div>
             {review.bodyHTML.trim() && (
                 <div className="timeline-card">
@@ -69,6 +76,7 @@ function Commits({ commits, route }: { commits: CommitNode["commit"][]; route: P
                 {commits.map((commit) => (
                     <li key={commit.oid}>
                         <span className="commit-headline">{commit.messageHeadline}</span>
+                        <NewTag at={commit.committedDate} author={commit.author?.user?.login} />
                         <Link
                             className="sha"
                             to="/$owner/$repo/pull/$number/commits/$sha"
@@ -165,6 +173,7 @@ function Item({ item, route }: { item: ConversationItem; route: PrRoute }) {
                         <>
                             <Who actor={item.comment.author} /> commented{" "}
                             <When at={item.comment.createdAt} href={item.comment.url} />
+                            <NewTag at={item.comment.createdAt} author={item.comment.author?.login} />
                         </>
                     }
                 >
@@ -179,6 +188,7 @@ function Item({ item, route }: { item: ConversationItem; route: PrRoute }) {
             return (
                 <div className="timeline-event">
                     <Who actor={item.event.actor} /> {eventText(item.event)} <When at={item.event.createdAt} />
+                    <NewTag at={item.event.createdAt} author={item.event.actor?.login} />
                 </div>
             );
         case "threads":
@@ -208,12 +218,51 @@ function itemKey(item: ConversationItem): string {
     }
 }
 
+type Shown = "all" | "unresolved";
+
+/** How much is new since the reader last had the PR open, and a way to get to the first of it. */
+function NewSince({ items }: { items: readonly ConversationItem[] }) {
+    const { lastOpened } = useOpenPr();
+    const isNew = useIsNew();
+    const count = items.flatMap(itemMoments).filter((moment) => isNew(moment.at, moment.author)).length;
+    if (!lastOpened || !count) return null;
+    return (
+        <div className="timeline-note new-since">
+            {count} new {count === 1 ? "entry" : "entries"} since you last opened this pull request{" "}
+            {timeAgo(lastOpened.at)}, marked New.{" "}
+            <button
+                type="button"
+                className="link-btn"
+                onClick={() => document.querySelector(".conversation .new-tag")?.scrollIntoView({ block: "center" })}
+            >
+                Go to the first
+            </button>
+        </div>
+    );
+}
+
 /** The description, then everything that happened on the PR, as on GitHub's Conversation tab. */
 export function ConversationTab() {
     const { route, detail } = useOpenPr();
     const { pr, timeline, threads, complete } = detail;
     const items = useMemo(() => buildConversation(timeline, threads), [timeline, threads]);
+    const summary = useMemo(() => prUnresolvedSummary(threads, pr.reviews?.nodes ?? []), [threads, pr.reviews]);
+    const [shown, setShown] = useState<Shown>("all");
+    const visible = useMemo(
+        () => (shown === "all" ? items : unresolvedOnly(items, summary.copilotVerdict?.id ?? null)),
+        [shown, items, summary.copilotVerdict],
+    );
     const { canWrite } = useWriteAccess(route);
+    useKeys({
+        n: () => stepThread(".conversation", 1),
+        p: () => stepThread(".conversation", -1),
+        c: () => {
+            const box = document.querySelector<HTMLTextAreaElement>(".pr-comment textarea");
+            if (!box) return false;
+            box.scrollIntoView({ block: "center" });
+            box.focus();
+        },
+    });
     return (
         <div className="conversation">
             <Card
@@ -236,9 +285,31 @@ export function ConversationTab() {
                     }}
                 />
             </Card>
-            {items.map((item) => (
+            <div className="conversation-bar">
+                <fieldset className="segmented" aria-label="Show in the conversation">
+                    <button
+                        type="button"
+                        className="step-btn"
+                        aria-pressed={shown === "all"}
+                        onClick={() => setShown("all")}
+                    >
+                        Everything
+                    </button>
+                    <button
+                        type="button"
+                        className="step-btn"
+                        aria-pressed={shown === "unresolved"}
+                        onClick={() => setShown("unresolved")}
+                    >
+                        Unresolved <span className="tab-count">{summary.unresolved}</span>
+                    </button>
+                </fieldset>
+            </div>
+            <NewSince items={items} />
+            {visible.map((item) => (
                 <Item key={itemKey(item)} item={item} route={route} />
             ))}
+            {shown === "unresolved" && !visible.length && <div className="empty">Nothing is unresolved.</div>}
             {!complete && (
                 <div className="timeline-note">
                     This conversation is longer than the page reads;{" "}

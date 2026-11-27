@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { drafts, useDraftKeys } from "../app/drafts.ts";
+import { currentOf, stepTo, useKeys } from "../app/keys.ts";
 import { usePersistedChoice } from "../app/storage.ts";
 import { useWriteAccess } from "../app/writeAccess.tsx";
 import type { FileViewedState } from "../github/gql/graphql.ts";
@@ -33,7 +34,7 @@ import { CommitPicker } from "./CommitPicker.tsx";
 import { type DiffMode, FileDiff } from "./FileDiff.tsx";
 import { FileTree } from "./FileTree.tsx";
 import { useOpenPr } from "./PrContext.tsx";
-import { Thread } from "./Thread.tsx";
+import { stepThread, Thread } from "./Thread.tsx";
 import { type DiffFiles, useColorScheme, useDiffFiles, useRawDiff } from "./useDiff.ts";
 import { prQueryKey, usePullRequestChecks, usePullRequestCommits, useViewedFiles } from "./usePullRequest.ts";
 import { usePrWrite } from "./useWrite.ts";
@@ -48,6 +49,11 @@ function toggled(set: ReadonlySet<string>, key: string, on: boolean): Set<string
 }
 
 const encodePath = (path: string) => path.split("/").map(encodeURIComponent).join("/");
+
+/** Puts the focus on a file's fold toggle once it is scrolled to, so Enter folds it. */
+function focusFile(section: Element | null) {
+    section?.querySelector<HTMLElement>(".file-toggle")?.focus({ preventScroll: true });
+}
 
 /** The diff the URL names: `/files` for the whole PR, `/files/<sha>` or `/commits/<sha>` for one commit, `/files/<a>..<b>`. */
 function useDiffSpec(): DiffSpec {
@@ -145,6 +151,30 @@ function ThreadsApart({ threads }: { threads: ReviewThread[] }) {
     );
 }
 
+/** The files' diffs on the page, in the order they show. */
+const fileSections = () => Array.from(document.querySelectorAll<HTMLElement>(".file-diffs > .file-diff"));
+
+/** The commits pushed since the reader last had the PR open, which only the PR's whole diff can offer. */
+function NewCommits({ route, spec }: { route: PrRoute; spec: DiffSpec }) {
+    const { detail, lastOpened } = useOpenPr();
+    const head = detail.pr.headRefOid;
+    if (spec.kind !== "all" || !lastOpened || lastOpened.head === head || !parseCommitSha(lastOpened.head)) {
+        return null;
+    }
+    return (
+        <div className="timeline-note new-since">
+            The branch moved since you last opened this pull request {timeAgo(lastOpened.at)}:{" "}
+            <Link
+                to="/$owner/$repo/pull/$number/files/$range"
+                params={{ ...route, range: `${lastOpened.head}..${head}` }}
+            >
+                show the changes since then
+            </Link>
+            .
+        </div>
+    );
+}
+
 /** A diff of the PR: a filterable file tree beside every changed file, unified or split, with its review threads. */
 export function FilesTab() {
     const { route, detail } = useOpenPr();
@@ -189,6 +219,7 @@ export function FilesTab() {
           }
         : null;
     const composers = useComposers(route);
+    const currentPath = () => currentOf(fileSections())?.dataset.path ?? null;
     // New comments go on the PR's whole diff, whose lines are the ones GitHub places them on.
     const onComment =
         canWrite && spec.kind === "all"
@@ -197,6 +228,27 @@ export function FilesTab() {
                   if (drafts.read(key) === null) drafts.write(key, "");
               }
             : null;
+
+    useKeys({
+        j: () => focusFile(stepTo(fileSections(), 1)),
+        k: () => focusFile(stepTo(fileSections(), -1)),
+        n: () => stepThread(".files-tab", 1),
+        p: () => stepThread(".files-tab", -1),
+        c: () => {
+            const path = currentPath();
+            if (!onComment || path === null) return false;
+            fold([path], false);
+            onComment({ subject: "file", path });
+        },
+        v: () => {
+            const path = currentPath();
+            if (!onViewed || path === null) return false;
+            const on = viewed?.get(path) !== "VIEWED";
+            onViewed(path, on);
+            // The file folds once viewed, so the next one comes up under it.
+            if (on) document.getElementById(fileAnchor(path))?.scrollIntoView({ block: "start" });
+        },
+    });
 
     const shown = useMemo(() => filterFiles(files ?? [], filter), [files, filter]);
     const tree = useMemo(() => buildFileTree(shown), [shown]);
@@ -300,6 +352,7 @@ export function FilesTab() {
                         .
                     </div>
                 )}
+                <NewCommits route={route} spec={spec} />
                 {placed && <ThreadsApart threads={placed.apart} />}
                 <div className="files-layout">
                     <FileTree tree={tree} filter={filter} onFilter={setFilter} onOpen={open} />

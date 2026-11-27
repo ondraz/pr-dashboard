@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { reviewThread, timeline } from "../github/prFixtures.ts";
-import { buildConversation, hunkTail } from "./conversation.ts";
+import { buildConversation, hunkTail, unresolvedOnly } from "./conversation.ts";
 
 describe("buildConversation", () => {
     it("keeps the timeline order and folds commits pushed in a row into one entry", () => {
@@ -67,6 +67,40 @@ describe("buildConversation", () => {
         const stray = reviewThread("T_2", "PRR_gone", [{ login: "bob", bodyHTML: "<p>Hm</p>" }]);
         const items = buildConversation([timeline.comment("IC_1", "bob", "<p>Hi</p>")], [stray]);
         expect(items.at(-1)).toEqual({ kind: "threads", threads: [stray] });
+    });
+});
+
+describe("unresolvedOnly", () => {
+    const open = reviewThread("T_1", "PRR_1", [{ login: "bob", bodyHTML: "<p>Why 3?</p>" }]);
+    const resolved = reviewThread("T_2", "PRR_1", [{ login: "bob", bodyHTML: "<p>Typo</p>" }], { isResolved: true });
+    const settled = reviewThread("T_3", "PRR_2", [{ login: "carol", bodyHTML: "<p>Rename</p>" }], {
+        isResolved: true,
+    });
+    const stray = reviewThread("T_4", "PRR_gone", [{ login: "dave", bodyHTML: "<p>Hm</p>" }]);
+    const items = buildConversation(
+        [
+            timeline.comment("IC_1", "bob", "<p>Hi</p>"),
+            timeline.review("PRR_1", "bob", "CHANGES_REQUESTED"),
+            timeline.commit("aaaaaaa1", "Fix it"),
+            timeline.review("PRR_2", "carol", "COMMENTED"),
+            timeline.review("PRR_3", "copilot-pull-request-reviewer", "COMMENTED", "<p>Changes recommended</p>"),
+        ],
+        [open, resolved, settled, stray],
+    );
+
+    it("keeps only the reviews with unresolved threads, and only those threads", () => {
+        expect(unresolvedOnly(items, null)).toEqual([
+            { kind: "review", review: expect.objectContaining({ id: "PRR_1" }), threads: [open] },
+            { kind: "threads", threads: [stray] },
+        ]);
+    });
+
+    it("keeps the review holding a standing verdict, though it has no thread", () => {
+        expect(unresolvedOnly(items, "PRR_3").map((item) => item.kind === "review" && item.review.id)).toEqual([
+            "PRR_1",
+            "PRR_3",
+            false,
+        ]);
     });
 });
 

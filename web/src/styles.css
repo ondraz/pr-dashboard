@@ -2784,3 +2784,80 @@ button.reaction {
     flex-wrap: wrap;
     gap: 8px;
 }
+
+/* Keyboard shortcuts, the conversation's filter and what is new since the last visit */
+.shortcuts {
+    position: relative;
+}
+.shortcuts-list {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    width: max-content;
+    max-width: min(480px, 90vw);
+    padding: 12px 16px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.15);
+    font-size: 13px;
+}
+.shortcuts-list h2 {
+    font-size: 14px;
+    margin: 0 0 8px;
+}
+.shortcuts-list dl {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+.shortcuts-list dl > div {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 12px;
+}
+.shortcuts-list dt {
+    display: flex;
+    gap: 4px;
+}
+.shortcuts-list dd {
+    margin: 0;
+}
+kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    padding: 1px 6px;
+    border: 1px solid var(--color-border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--color-bg-secondary);
+}
+
+.conversation-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.new-tag {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    border-radius: 20px;
+    padding: 0 6px;
+    margin-left: 6px;
+}
+.new-since {
+    border-left: 3px solid var(--color-accent);
+    padding-left: 8px;
+}
+
+.thread {
+    scroll-margin-top: 12px;
+}
+.file-diffs .thread {
+    /* below the file's sticky header */
+    scroll-margin-top: 48px;
+}
