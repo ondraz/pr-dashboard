@@ -15,7 +15,7 @@ import type { PrRoute } from "../logic/prRoute.ts";
 import { refreshInterval } from "../logic/refresh.ts";
 
 /** Refreshes on the list's schedule: on its interval, or on returning to the tab for "on access". */
-function useRefreshOptions() {
+export function useRefreshOptions() {
     const { mode } = useDashboardState();
     const interval = refreshInterval(mode);
     return {

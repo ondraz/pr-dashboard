@@ -258,7 +258,9 @@ describe("PR page", () => {
         ).toBe(`claude://claude.ai/epitaxy/${madeSession.id}`);
 
         expect(screen.getByRole("link", { name: "Conversation" }).getAttribute("aria-current")).toBe("page");
-        expect(screen.getByRole("link", { name: /Files changed/ }).getAttribute("href")).toBe(`${PR_URL}/files`);
+        expect(screen.getByRole("link", { name: /Files changed/ }).getAttribute("href")).toBe(
+            "/acme/widgets/pull/12/files",
+        );
     });
 
     it("shows the description and the whole timeline, with each review's threads", async () => {

@@ -3,7 +3,6 @@ import { External } from "../list/PrRows.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 
 const WHAT = {
-    files: { name: "The diff", path: "/files" },
     checks: { name: "The checks", path: "/checks" },
     commit: { name: "A single commit's diff", path: "/commits/" },
 } as const;

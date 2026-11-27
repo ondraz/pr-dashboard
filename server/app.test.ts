@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpRequest } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -5,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import { DIFF_INLINE_STYLES } from "../shared/diffStyles.ts";
 import type { SessionsPayload } from "../shared/sessions.ts";
 import { CONTENT_SECURITY_POLICY, createApp, createHttpServer, isAppRoute } from "./app.ts";
 import { AuthService } from "./auth.ts";
@@ -84,6 +86,15 @@ describe("createApp", () => {
             expect(await res.text()).toMatch(/^<!doctype html>/i);
         },
     );
+
+    it("allows no inline style but the diff view's own, each by its hash", () => {
+        const styleSrc = CONTENT_SECURITY_POLICY.split("; ").find((directive) => directive.startsWith("style-src "));
+        const hashes = DIFF_INLINE_STYLES.map(
+            (style) => `'sha256-${createHash("sha256").update(style).digest("base64")}'`,
+        );
+        expect(styleSrc).toBe(`style-src 'self' 'unsafe-hashes' ${hashes.join(" ")}`);
+        expect(CONTENT_SECURITY_POLICY).not.toContain("unsafe-inline");
+    });
 
     it("serves the hashed bundle for good and other files revalidated", async () => {
         const bundle = await get("/assets/index-abc123.js");

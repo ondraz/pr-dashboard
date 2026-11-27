@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, Link, Outlet } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent, Outlet } from "@tanstack/react-router";
 import { AuthProvider } from "./app/AuthProvider.tsx";
 import { DashboardProvider } from "./app/DashboardProvider.tsx";
 import { ListEntryProvider } from "./app/listReturn.tsx";
@@ -72,7 +72,8 @@ const commitRoute = createRoute({
 const filesRoute = createRoute({
     getParentRoute: () => prRoute,
     path: "files",
-    component: () => <ElsewhereTab view="files" />,
+    // The diff view brings a syntax highlighter for every language, so it loads only once a diff opens.
+    component: lazyRouteComponent(() => import("./detail/FilesTab.tsx"), "FilesTab"),
 });
 
 const checksRoute = createRoute({
