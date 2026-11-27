@@ -86,7 +86,8 @@ within 90 days.
   **Hide whitespace** leaves out changes to whitespace alone, as `git diff -w` does; both choices are
   remembered. GitHub's API has no such option, so the page works it out from the hunks it already has:
   each hunk's lines are compared again with whitespace ignored, a line whose change was only whitespace
-  shows as context as it is now, and a file with nothing else changed says so. Code is syntax highlighted and changed words within a line are marked, in
+  shows as context as it is now, a thread on a line left out shows above the file's hunks, and a file
+  with nothing else changed says so. Code is syntax highlighted and changed words within a line are marked, in
   the light or dark theme the system uses. A rename without changes, a mode change, and a binary or
   empty file say so instead of showing hunks. A file with more than 400 changed lines waits for
   **Load diff**. A diff of more than 2,000 changed lines in all draws each file's hunks only as it comes

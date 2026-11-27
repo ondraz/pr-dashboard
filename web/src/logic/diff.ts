@@ -320,3 +320,14 @@ export function placeThreads<T extends ThreadAnchor>(
     }
     return { byPath, apart };
 }
+
+/** A file's line threads whose lines the drawn hunks leave out, as hiding whitespace can; all of them when none are drawn. */
+export function threadsOffLines<T>(
+    threads: FileThreads<T> | undefined,
+    lines: { LEFT: ReadonlyMap<number, unknown>; RIGHT: ReadonlyMap<number, unknown> } | null,
+): T[] {
+    if (!threads) return [];
+    const off = (side: Record<string, T[]>, drawn: ReadonlyMap<number, unknown> | undefined) =>
+        Object.entries(side).flatMap(([line, list]) => (drawn?.has(Number(line)) ? [] : list));
+    return [...off(threads.old, lines?.LEFT), ...off(threads.new, lines?.RIGHT)];
+}

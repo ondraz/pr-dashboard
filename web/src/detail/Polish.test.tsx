@@ -399,6 +399,22 @@ describe("Hide whitespace", () => {
         ).toBeTruthy();
         expect((screen.getByRole("checkbox", { name: "Hide whitespace" }) as HTMLInputElement).checked).toBe(true);
     });
+
+    it("keeps a thread on a line it leaves out, above the file's hunks", async () => {
+        threads = [
+            reviewThread("T_1", "PRR_1", [{ login: "bob", bodyHTML: "<p>Four spaces?</p>" }], {
+                path: "src/axle.ts",
+                line: 2,
+            }),
+        ];
+        open("/acme/widgets/pull/12/files");
+        const axle = await screen.findByRole("region", { name: "src/axle.ts" });
+        await within(axle).findByText("Four spaces?");
+
+        fireEvent.click(screen.getByRole("checkbox", { name: "Hide whitespace" }));
+        expect(within(axle).getByText("Only whitespace changed.")).toBeTruthy();
+        expect(within(axle).getByText("Four spaces?")).toBeTruthy();
+    });
 });
 
 describe("a very long diff", () => {
@@ -456,6 +472,21 @@ describe("a very long diff", () => {
         reveal("src/a.ts");
         await waitFor(() => expect(diffRows(first)).toContain("+row 0"));
         expect(document.querySelectorAll(".file-placeholder")).toHaveLength(PATHS.length - 1);
+    });
+
+    it("holds a short place for a large file that waits for Load diff", async () => {
+        const lockRows = Array.from({ length: 3000 }, (_, n) => `+lock ${n}`).join("\n");
+        server.use(
+            filesResponse([
+                { filename: "src/a.ts", additions: 350, deletions: 0, patch: `@@ -0,0 +1,350 @@\n${rows}` },
+                { filename: "src/lock.json", additions: 3000, deletions: 0, patch: `@@ -0,0 +1,3000 @@\n${lockRows}` },
+            ]),
+        );
+        open("/acme/widgets/pull/12/files");
+        const lock = await screen.findByRole("region", { name: "src/lock.json" });
+        const a = screen.getByRole("region", { name: "src/a.ts" });
+        expect(lock.querySelector<HTMLElement>(".file-placeholder")?.style.height).toBe("40px");
+        expect(a.querySelector<HTMLElement>(".file-placeholder")?.style.height).toBe("7020px");
     });
 
     it("steps with n to a file whose threads are not drawn yet, then into them", async () => {

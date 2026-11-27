@@ -15,6 +15,7 @@ import {
     patchIsComplete,
     type RawFileDiff,
     rawSectionOf,
+    threadsOffLines,
     unifiedDiffText,
 } from "../logic/diff.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
@@ -195,8 +196,9 @@ const ROW_HEIGHT = 20;
 const MAX_PLACEHOLDER = 20_000;
 
 /** Where a file's hunks will be drawn once it comes near the window. */
-function FilePlaceholder({ file }: { file: ChangedFile }) {
-    const rows = file.patch ? file.patch.split("\n").length : file.additions + file.deletions;
+function FilePlaceholder({ file, loaded }: { file: ChangedFile; loaded: boolean }) {
+    const rows =
+        isLargeDiff(file) && !loaded ? 2 : file.patch ? file.patch.split("\n").length : file.additions + file.deletions;
     return (
         <div
             className="file-placeholder"
@@ -237,6 +239,10 @@ export function FileDiff(props: FileDiffProps) {
     const text = useFileText(route, file.path, headOid, expandable && wantsContext);
     const diffFile = useDiffFile(file, hunks, theme, text.data);
     const lines = useMemo(() => (hunks === null ? null : patchLines(hunks)), [hunks]);
+    const offLines = useMemo(
+        () => (whitespaceHidden && changed !== null ? threadsOffLines(threads, lines) : []),
+        [whitespaceHidden, changed, threads, lines],
+    );
     // An annotation is drawn under the line it ends on when the diff shows that line, and above the hunks otherwise.
     const placed = useMemo(() => placeAnnotations(annotations ?? [], lines?.RIGHT ?? new Map()), [annotations, lines]);
     const extendData = useMemo(
@@ -340,17 +346,20 @@ export function FileDiff(props: FileDiffProps) {
                     </label>
                 )}
             </div>
-            {!collapsed && !near && <FilePlaceholder file={file} />}
+            {!collapsed && !near && <FilePlaceholder file={file} loaded={props.loaded} />}
             {body && (
                 <div className="file-body">
                     {text.error && <Note>The file could not be read for context: {text.error.message}</Note>}
-                    {(!!placed.elsewhere.length || !!threads?.file.length || fileComposer) && (
+                    {(!!placed.elsewhere.length || !!threads?.file.length || !!offLines.length || fileComposer) && (
                         <div className="diff-threads file-level">
                             {placed.elsewhere.map((annotation) => (
                                 <Annotation key={annotation.id} annotation={annotation} withPath />
                             ))}
                             {threads?.file.map((thread) => (
                                 <Thread key={thread.id} thread={thread} inDiff />
+                            ))}
+                            {offLines.map((thread) => (
+                                <Thread key={thread.id} thread={thread} />
                             ))}
                             {fileComposer && <CommentComposer target={fileComposer} lines={null} />}
                         </div>
