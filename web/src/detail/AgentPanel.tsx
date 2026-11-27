@@ -3,8 +3,9 @@ import type { PrSession } from "../../../shared/sessions.ts";
 import { SparkIcon } from "../list/icons.tsx";
 import { fixPrompt, promptThreads, reviewPrompt } from "../logic/agentPrompt.ts";
 import { newSessionLinks, type PromptLink, resumeLink } from "../logic/sessionLinks.ts";
+import { timeAgo } from "../logic/time.ts";
 import { prUnresolvedSummary } from "../logic/unresolved.ts";
-import { usePrListContext } from "./listContext.ts";
+import { type PrListContext, usePrListContext } from "./listContext.ts";
 import { useOpenPr } from "./PrContext.tsx";
 import { usePullRequestChecks } from "./usePullRequest.ts";
 
@@ -15,8 +16,10 @@ const TASK = {
     review: { heading: "Review with Claude", role: "reviewed", who: "reviewed this PR" },
 } as const;
 
-// The sessions a prompt can be handed to; older ones are on the sidebar.
-const SESSIONS_SHOWN = 3;
+// The sessions a prompt can be handed to: those that made or reviewed the PR, then others in its
+// repository. Older ones are a search away in the app.
+const OWN_SESSIONS_SHOWN = 3;
+const REPO_SESSIONS_SHOWN = 5;
 
 const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? "" : "s"}`;
 
@@ -56,56 +59,83 @@ function usePrompt(task: AgentTask) {
     }, [task, route, pr, threads, checks.data, checks.error]);
 }
 
-/** A link that copies the prompt as it opens, since most of them cannot carry it. */
+/** A link that copies the prompt as it opens, in case the app leaves its box empty. */
 function PromptAnchor({
     link,
     label,
     title,
+    primary = false,
     onOpen,
 }: {
     link: Pick<PromptLink, "href">;
     label: string;
     title?: string;
+    primary?: boolean;
     onOpen: () => void;
 }) {
     return (
-        <a className="step-btn agent-link" href={link.href} title={title} onClick={onOpen}>
+        <a
+            className={`${primary ? "primary-btn" : "step-btn"} agent-link`}
+            href={link.href}
+            title={title}
+            onClick={onOpen}
+        >
             <SparkIcon />
             {label}
         </a>
     );
 }
 
-function SessionTargets({
-    sessions,
-    task,
-    prompt,
-    onOpen,
-}: {
-    sessions: PrSession[];
-    task: AgentTask;
-    prompt: string;
-    onOpen: () => void;
-}) {
-    const links = sessions.slice(0, SESSIONS_SHOWN).flatMap((session) => {
-        const link = resumeLink(session, TASK[task].role, prompt);
-        return link ? [{ session, link }] : [];
-    });
-    if (!links.length) return <p className="muted">No Claude session {TASK[task].who} that this computer knows of.</p>;
+interface Target {
+    session: PrSession;
+    link: NonNullable<ReturnType<typeof resumeLink>>;
+    /** Why it is offered: it made or reviewed the PR, or it works in the PR's repository. */
+    reason: string;
+}
+
+/** The sessions that made or reviewed the PR first, then the repository's other recent desktop sessions. */
+function sessionTargets(task: AgentTask, context: PrListContext, prompt: string, repo: string): Target[] {
+    const role = TASK[task].role;
+    const targets: Target[] = [];
+    const add = (session: PrSession, reason: string) => {
+        if (targets.some((target) => target.session.id === session.id)) return;
+        const link = resumeLink(session, role, prompt);
+        if (link) targets.push({ session, link, reason });
+    };
+    for (const session of context[role].slice(0, OWN_SESSIONS_SHOWN)) add(session, TASK[task].who);
+    for (const session of (context.repo?.sessions ?? []).slice(0, REPO_SESSIONS_SHOWN)) add(session, `in ${repo}`);
+    return targets;
+}
+
+function SessionTargets({ targets, repo, onOpen }: { targets: Target[]; repo: string; onOpen: () => void }) {
+    if (!targets.length) return <p className="muted">No Claude session on this computer has worked in {repo}.</p>;
     return (
         <ul className="agent-sessions">
-            {links.map(({ session, link }) => (
-                <li key={session.id} className={link.archived ? "archived" : undefined}>
-                    <PromptAnchor
-                        link={link}
-                        label={`${link.carriesPrompt ? "Open" : "Copy and open"} in ${link.app}`}
-                        title={link.title}
-                        onOpen={onOpen}
-                    />
-                    <span className="session-title">{session.title || "Untitled session"}</span>
-                    {session.archived && <span className="session-meta">archived</span>}
-                </li>
-            ))}
+            {targets.map(({ session, link, reason }) => {
+                const title = session.title || "Untitled session";
+                return (
+                    <li key={session.id} className={link.archived ? "archived" : undefined}>
+                        <span className="session-title" title={title}>
+                            {title}
+                        </span>
+                        <span className="session-meta">
+                            {[reason, timeAgo(session.lastActivityAt), link.app === "VS Code" ? "VS Code" : null]
+                                .concat(session.archived ? ["archived"] : [])
+                                .filter(Boolean)
+                                .join(" · ")}
+                        </span>
+                        <a
+                            className="step-btn agent-link"
+                            href={link.href}
+                            title={link.title}
+                            aria-label={`Send to ${title} in ${link.app}`}
+                            onClick={onOpen}
+                        >
+                            Send
+                        </a>
+                    </li>
+                );
+            })}
         </ul>
     );
 }
@@ -115,8 +145,11 @@ function SessionTargets({
  * made or reviewed the PR, or starts a new one. Nothing reaches GitHub from here.
  */
 export function AgentPanel({ task, onClose }: { task: AgentTask; onClose: () => void }) {
-    const { pr } = useOpenPr().detail;
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
     const context = usePrListContext(pr.url);
+    const repo = `${route.owner}/${route.repo}`;
+    const folder = context.repo?.folder ?? null;
     const { prompt, error, failing, threads } = usePrompt(task);
     const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
     const copy = () => {
@@ -148,28 +181,48 @@ export function AgentPanel({ task, onClose }: { task: AgentTask; onClose: () => 
                     <textarea className="agent-prompt" aria-label="Prompt" readOnly value={prompt} rows={10} />
                     <div className="agent-targets">
                         <div>
-                            <h3>The session that {TASK[task].who}</h3>
-                            <SessionTargets
-                                sessions={context[TASK[task].role]}
-                                task={task}
-                                prompt={prompt}
-                                onOpen={copy}
-                            />
-                        </div>
-                        <div>
                             <h3>A new session</h3>
                             <div className="agent-new">
-                                {newSessionLinks(prompt).map((link) => (
+                                {newSessionLinks(prompt, folder).map((link) => (
                                     <PromptAnchor
                                         key={link.app}
                                         link={link}
                                         label={`New session in ${link.app}`}
+                                        primary={link.app === "Claude"}
+                                        title={
+                                            link.app === "Claude"
+                                                ? folder
+                                                    ? `Starts a desktop session in ${folder}`
+                                                    : "Starts a desktop session; the app asks for its folder"
+                                                : "Starts a session in the open VS Code window"
+                                        }
                                         onOpen={copy}
                                     />
                                 ))}
                             </div>
+                            <p className="muted agent-folder">
+                                {folder ? (
+                                    <>
+                                        The desktop session opens in <code title={folder}>{folder}</code>.
+                                    </>
+                                ) : (
+                                    <>No checkout of {repo} is known here, so the desktop app asks for its folder.</>
+                                )}
+                            </p>
+                        </div>
+                        <div>
+                            <h3>An existing session</h3>
+                            <SessionTargets
+                                targets={sessionTargets(task, context, prompt, repo)}
+                                repo={repo}
+                                onOpen={copy}
+                            />
                         </div>
                     </div>
+                    <p className="muted">
+                        Each link hands the session the prompt and copies it too; if a session's box stays empty, paste
+                        it there.
+                    </p>
                     <div className="composer-actions">
                         {copied === "copied" && <span className="muted">Prompt copied</span>}
                         {copied === "failed" && (

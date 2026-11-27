@@ -44,8 +44,9 @@ export const LINK_PROMPT_LIMIT = 8000;
 const fits = (prompt: string) => prompt.length > 0 && prompt.length <= LINK_PROMPT_LIMIT;
 
 /**
- * Opens `session` for `prompt`. VS Code's link takes the prompt and puts it in the session's box; the
- * desktop app's link to a session takes none, so there it has to be pasted.
+ * Opens `session` with `prompt`. VS Code's link takes it and puts it in the session's box. The desktop
+ * app passes a session link's `q` on to the session page, whose prompt box reads `q` the way the new
+ * session page does; that is not confirmed for an open session, so the panel copies the prompt as well.
  */
 export function resumeLink(
     session: PrSession,
@@ -54,18 +55,27 @@ export function resumeLink(
 ): (SessionLink & { carriesPrompt: boolean }) | null {
     const link = sessionLink(session, role);
     if (!link) return null;
-    if (link.app === "VS Code" && fits(prompt)) {
-        return { ...link, href: `${link.href}&prompt=${encodeURIComponent(prompt)}`, carriesPrompt: true };
-    }
-    return { ...link, carriesPrompt: false };
+    if (!fits(prompt)) return { ...link, carriesPrompt: false };
+    const query = link.app === "VS Code" ? `&prompt=${encodeURIComponent(prompt)}` : `?q=${encodeURIComponent(prompt)}`;
+    return { ...link, href: `${link.href}${query}`, carriesPrompt: true };
 }
 
-/** Starts a new Claude Code session with `prompt`, in the desktop app or in VS Code. */
-export function newSessionLinks(prompt: string): PromptLink[] {
+/**
+ * Starts a new Claude Code session with `prompt`, in the desktop app or in VS Code. The desktop app
+ * opens it in `folder`, the repository's checkout, when one is known; otherwise it asks for a folder.
+ */
+export function newSessionLinks(prompt: string, folder: string | null = null): PromptLink[] {
     const carriesPrompt = fits(prompt);
-    const query = (name: string) => (carriesPrompt ? `?${name}=${encodeURIComponent(prompt)}` : "");
+    const desktop = [
+        ...(carriesPrompt ? [`q=${encodeURIComponent(prompt)}`] : []),
+        ...(folder ? [`folder=${encodeURIComponent(folder)}`] : []),
+    ].join("&");
     return [
-        { app: "Claude", href: `claude://code/new${query("q")}`, carriesPrompt },
-        { app: "VS Code", href: `vscode://anthropic.claude-code/open${query("prompt")}`, carriesPrompt },
+        { app: "Claude", href: `claude://code/new${desktop ? `?${desktop}` : ""}`, carriesPrompt },
+        {
+            app: "VS Code",
+            href: `vscode://anthropic.claude-code/open${carriesPrompt ? `?prompt=${encodeURIComponent(prompt)}` : ""}`,
+            carriesPrompt,
+        },
     ];
 }

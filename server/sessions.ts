@@ -1,9 +1,9 @@
 import { createReadStream } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
-import type { PrSession, SessionsPayload } from "../shared/sessions.ts";
+import type { PrSession, RepoSessions, SessionsPayload } from "../shared/sessions.ts";
 
 export const DESKTOP_SESSIONS_DIR = join(homedir(), "Library/Application Support/Claude/claude-code-sessions");
 export const CLI_PROJECTS_DIR = join(homedir(), ".claude/projects");
@@ -20,6 +20,9 @@ interface TranscriptScan {
 
 type JsonObject = Record<string, unknown>;
 
+// The desktop sessions offered per repository; older ones are a search away in the app.
+const SESSIONS_PER_REPO = 10;
+
 /**
  * Which Claude session made or reviewed each PR, from the desktop app's session records and the
  * CLI and VS Code transcripts. Each transcript is re-read only when its modification time changes.
@@ -28,6 +31,7 @@ export class SessionIndex {
     readonly #desktopDir: string;
     readonly #projectsDir: string;
     readonly #transcripts = new Map<string, { mtimeMs: number; scan: TranscriptScan }>();
+    readonly #remotes = new Map<string, { mtimeMs: number; repo: string | null }>();
 
     constructor(desktopDir: string, projectsDir: string) {
         this.#desktopDir = desktopDir;
@@ -43,6 +47,7 @@ export class SessionIndex {
     async read(): Promise<SessionsPayload> {
         const made = new Map<string, PrSession[]>();
         const desktopByCli = new Map<string, PrSession>();
+        const byRepo = new Map<string, { folder: string | null; sessions: PrSession[] }>();
         for (const path of await listFiles(this.#desktopDir, 2, (name) => /^local_.*\.json$/.test(name))) {
             const session = await readJsonObject(path);
             if (!session || !isNonEmptyString(session.sessionId)) continue;
@@ -53,13 +58,60 @@ export class SessionIndex {
                 lastActivityAt: typeof session.lastActivityAt === "number" ? session.lastActivityAt : 0,
             };
             if (isNonEmptyString(session.cliSessionId)) desktopByCli.set(session.cliSessionId, entry);
+            if (!entry.archived) {
+                const anchor = await this.#repoOf(session);
+                if (anchor) {
+                    const known = byRepo.get(anchor.repo) ?? { folder: null, sessions: [] };
+                    known.sessions.push(entry);
+                    // The most recently active session's checkout wins, since that is the one in use.
+                    const newest = known.sessions.every((other) => other.lastActivityAt <= entry.lastActivityAt);
+                    if (anchor.folder && (newest || !known.folder)) known.folder = anchor.folder;
+                    byRepo.set(anchor.repo, known);
+                }
+            }
             for (const pr of Array.isArray(session.prs) ? session.prs : []) {
                 if (isObject(pr) && isNonEmptyString(pr.url) && !pr.onlySeen) addSession(made, pr.url, entry);
             }
         }
         const reviewed = new Map<string, PrSession[]>();
         await this.#readTranscripts(desktopByCli, made, reviewed);
-        return { made: newestFirst(made), reviewed: newestFirst(reviewed) };
+        const repos: Record<string, RepoSessions> = {};
+        for (const [repo, { folder, sessions }] of byRepo) {
+            repos[repo] = {
+                folder,
+                sessions: sessions.toSorted((a, b) => b.lastActivityAt - a.lastActivityAt).slice(0, SESSIONS_PER_REPO),
+            };
+        }
+        return { made: newestFirst(made), reviewed: newestFirst(reviewed), repos };
+    }
+
+    /**
+     * The GitHub repository a desktop session works in and its main checkout: the session records the
+     * shared `.git` directory of its folder (a worktree's included), whose `origin` names the repository.
+     */
+    async #repoOf(session: JsonObject): Promise<{ repo: string; folder: string | null } | null> {
+        const anchors = Array.isArray(session.gitAnchors) ? session.gitAnchors : [];
+        const anchor = anchors.find((candidate): candidate is JsonObject => isObject(candidate));
+        const commonDir = anchor?.commonDir;
+        if (!isNonEmptyString(commonDir)) return null;
+        const repo = await this.#remoteRepo(commonDir);
+        if (!repo) return null;
+        return { repo, folder: basename(commonDir) === ".git" ? dirname(commonDir) : null };
+    }
+
+    /** `owner/name` of the `origin` remote in `<commonDir>/config`, re-read only when the file changes. */
+    async #remoteRepo(commonDir: string): Promise<string | null> {
+        const path = join(commonDir, "config");
+        try {
+            const { mtimeMs } = await stat(path);
+            const cached = this.#remotes.get(path);
+            if (cached?.mtimeMs === mtimeMs) return cached.repo;
+            const repo = originRepo(await readFile(path, "utf8"));
+            this.#remotes.set(path, { mtimeMs, repo });
+            return repo;
+        } catch {
+            return null;
+        }
     }
 
     /**
@@ -143,6 +195,30 @@ function toolAction(block: JsonObject): string {
 }
 
 /** Several transcripts can stand for one desktop session, which is listed once. */
+/** The GitHub `owner/name`, in lower case, of the `origin` remote in a git config file. */
+export function originRepo(config: string): string | null {
+    let inOrigin = false;
+    for (const raw of config.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (line.startsWith("[")) {
+            inOrigin = /^\[remote\s+"origin"\]$/.test(line);
+            continue;
+        }
+        const url = inOrigin ? /^url\s*=\s*(.+)$/.exec(line)?.[1] : undefined;
+        if (url) return githubRepo(url.trim());
+    }
+    return null;
+}
+
+/** `owner/name` from a GitHub remote URL in any of its forms: HTTPS, SSH, or scp-like. */
+export function githubRepo(url: string): string | null {
+    const match =
+        /^(?:https?:\/\/(?:[^@/]+@)?|ssh:\/\/(?:[^@/]+@)?|[^@/]+@)github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(
+            url,
+        );
+    return match ? `${match[1]}/${match[2]}`.toLowerCase() : null;
+}
+
 function addSession(byUrl: Map<string, PrSession[]>, url: string, entry: PrSession): void {
     const list = byUrl.get(url);
     if (!list) byUrl.set(url, [entry]);

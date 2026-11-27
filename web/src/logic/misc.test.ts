@@ -76,14 +76,14 @@ describe("prompt links", () => {
     };
     const cli: PrSession = { ...desktop, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "cli" };
 
-    it("hands VS Code's session the prompt in its link, and leaves the desktop app's to the clipboard", () => {
+    it("hands either app's session the prompt in its link", () => {
         expect(resumeLink(cli, "made", "Fix #12 & push")).toMatchObject({
             href: "vscode://anthropic.claude-code/open?session=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&prompt=Fix%20%2312%20%26%20push",
             carriesPrompt: true,
         });
         expect(resumeLink(desktop, "made", "Fix #12")).toMatchObject({
-            href: "claude://claude.ai/epitaxy/local_11111111-1111-4111-8111-111111111111",
-            carriesPrompt: false,
+            href: "claude://claude.ai/epitaxy/local_11111111-1111-4111-8111-111111111111?q=Fix%20%2312",
+            carriesPrompt: true,
         });
         expect(resumeLink({ ...desktop, id: "local_x;y" }, "made", "Fix")).toBeNull();
     });
@@ -95,6 +95,15 @@ describe("prompt links", () => {
         ]);
     });
 
+    it("opens a new desktop session in the repository's checkout when one is known", () => {
+        expect(newSessionLinks("Fix #12", "/work/widgets")[0]?.href).toBe(
+            "claude://code/new?q=Fix%20%2312&folder=%2Fwork%2Fwidgets",
+        );
+        expect(newSessionLinks("x".repeat(LINK_PROMPT_LIMIT + 1), "/work/widgets")[0]?.href).toBe(
+            "claude://code/new?folder=%2Fwork%2Fwidgets",
+        );
+    });
+
     it("leaves a prompt too long for a link to be pasted", () => {
         const long = "x".repeat(LINK_PROMPT_LIMIT + 1);
         expect(newSessionLinks(long).map((link) => [link.href, link.carriesPrompt])).toEqual([
@@ -102,6 +111,10 @@ describe("prompt links", () => {
             ["vscode://anthropic.claude-code/open", false],
         ]);
         expect(resumeLink(cli, "reviewed", long)?.carriesPrompt).toBe(false);
+        expect(resumeLink(desktop, "made", long)).toMatchObject({
+            href: "claude://claude.ai/epitaxy/local_11111111-1111-4111-8111-111111111111",
+            carriesPrompt: false,
+        });
     });
 });
 

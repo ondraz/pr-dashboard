@@ -100,6 +100,13 @@ const reviewSession: PrSession = {
     lastActivityAt: Date.parse("2026-11-27T09:00:00Z"),
 };
 
+const otherRepoSession: PrSession = {
+    id: "local_0d0d0d0d-0000-4000-8000-000000000000",
+    title: "Axle work",
+    archived: false,
+    lastActivityAt: Date.parse("2026-11-27T11:00:00Z"),
+};
+
 let detailRequests = 0;
 const checkRequests: Record<string, unknown>[] = [];
 
@@ -225,6 +232,8 @@ function open(path: string, services: Partial<Services> = {}) {
         fetchSessions: async () => ({
             made: new Map([[PR_URL, [madeSession, olderSession]]]),
             reviewed: new Map([[PR_URL, [reviewSession]]]),
+            // The repository's own sessions: the one that made the PR again, and another one.
+            repos: new Map([["acme/widgets", { folder: "/work/widgets", sessions: [madeSession, otherRepoSession] }]]),
         }),
         ...services,
     });
@@ -724,19 +733,35 @@ describe("PR page", () => {
             expect(prompt.value).not.toContain("Typo.");
             expect(within(panel).getByText("1 failing check and 1 unresolved thread go into the prompt.")).toBeTruthy();
 
-            const [latest, older] = within(panel).getAllByRole("link", { name: /Copy and open in Claude/ });
-            expect(latest?.getAttribute("href")).toBe(`claude://claude.ai/epitaxy/${madeSession.id}`);
-            expect(older?.closest("li")?.className).toBe("archived");
-            fireEvent.click(latest as HTMLElement);
+            // The sessions that made the PR first, then the repository's other ones, each once.
+            const rows = [...panel.querySelectorAll(".agent-sessions li")].map((row) => [
+                row.querySelector(".session-title")?.textContent,
+                row.querySelector(".session-meta")?.textContent,
+            ]);
+            expect(rows).toEqual([
+                ["Gear work", "made this PR · 1d ago"],
+                ["Gear spike", "made this PR · 7d ago · archived"],
+                ["Axle work", "in acme/widgets · 1h ago"],
+            ]);
+            const send = within(panel).getByRole("link", { name: "Send to Gear work in Claude" });
+            expect(send.getAttribute("href")).toBe(
+                `claude://claude.ai/epitaxy/${madeSession.id}?q=${encodeURIComponent(prompt.value)}`,
+            );
+            fireEvent.click(send);
             expect(writeText).toHaveBeenCalledWith(prompt.value);
             expect(await within(panel).findByText("Prompt copied")).toBeTruthy();
+            expect(within(panel).getByRole("link", { name: "Send to Axle work in Claude" })).toBeTruthy();
 
-            const fresh =
+            // A new desktop session opens in the repository's checkout.
+            const fresh = new URL(
                 within(panel)
                     .getByRole("link", { name: /New session in Claude/ })
-                    .getAttribute("href") ?? "";
-            expect(fresh.startsWith("claude://code/new?q=")).toBe(true);
-            expect(decodeURIComponent(fresh.slice("claude://code/new?q=".length))).toBe(prompt.value);
+                    .getAttribute("href") ?? "",
+            );
+            expect(`${fresh.protocol}//${fresh.host}${fresh.pathname}`).toBe("claude://code/new");
+            expect(fresh.searchParams.get("q")).toBe(prompt.value);
+            expect(fresh.searchParams.get("folder")).toBe("/work/widgets");
+            expect(within(panel).getByText("/work/widgets")).toBeTruthy();
 
             fireEvent.click(within(panel).getByRole("button", { name: "Close" }));
             expect(screen.queryByRole("region", { name: "Fix with Claude" })).toBeNull();
@@ -749,14 +774,14 @@ describe("PR page", () => {
             const panel = screen.getByRole("region", { name: "Review with Claude" });
             const prompt = (await within(panel).findByRole("textbox", { name: "Prompt" })) as HTMLTextAreaElement;
             expect(prompt.value.startsWith('Review pull request acme/widgets#12, "Turn the gears"')).toBe(true);
-            const link = within(panel).getByRole("link", { name: /Open in VS Code/ });
+            const link = within(panel).getByRole("link", { name: "Send to Review the gears in VS Code" });
             expect(link.getAttribute("href")).toBe(
                 `vscode://anthropic.claude-code/open?session=${reviewSession.id}&prompt=${encodeURIComponent(prompt.value)}`,
             );
             expect(within(panel).getByText("Review the gears")).toBeTruthy();
         });
 
-        it("offers only a new session when no session made the PR, and says when the copy failed", async () => {
+        it("offers only a new session when no session worked in the repository, and says when the copy failed", async () => {
             writeText.mockRejectedValue(new Error("denied"));
             open("/acme/widgets/pull/12", {
                 fetchSessions: async () => ({ made: new Map(), reviewed: new Map() }),
@@ -765,7 +790,20 @@ describe("PR page", () => {
             fireEvent.click(screen.getByRole("button", { name: "Fix with Claude" }));
             const panel = screen.getByRole("region", { name: "Fix with Claude" });
             await within(panel).findByRole("textbox", { name: "Prompt" });
-            expect(within(panel).getByText("No Claude session made this PR that this computer knows of.")).toBeTruthy();
+            expect(
+                within(panel).getByText("No Claude session on this computer has worked in acme/widgets."),
+            ).toBeTruthy();
+            expect(
+                within(panel).getByText(
+                    "No checkout of acme/widgets is known here, so the desktop app asks for its folder.",
+                ),
+            ).toBeTruthy();
+            expect(
+                within(panel)
+                    .getByRole("link", { name: /New session in Claude/ })
+                    .getAttribute("href")
+                    ?.includes("folder="),
+            ).toBe(false);
             fireEvent.click(within(panel).getByRole("button", { name: "Copy prompt" }));
             expect(await within(panel).findByText("Could not copy; select the prompt and copy it.")).toBeTruthy();
         });
