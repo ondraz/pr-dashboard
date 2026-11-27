@@ -245,6 +245,7 @@ export const reviewThreadDetailPageFragment = graphql(`
             startLine
             originalStartLine
             diffSide
+            startDiffSide
             subjectType
             viewerCanReply
             viewerCanResolve
@@ -307,6 +308,7 @@ export const headChecksFragment = graphql(`
 export const pullRequestManageFragment = graphql(`
     fragment PullRequestManageFields on PullRequest {
         viewerCanUpdate
+        viewerCanEditFiles
         viewerCanUpdateBranch
         viewerCanEnableAutoMerge
         viewerCanDisableAutoMerge
@@ -421,11 +423,13 @@ export const pullRequestDetailQuery = graphql(`
                 }
                 assignees(first: 20) {
                     nodes {
+                        id
                         ...ActorFields
                     }
                 }
                 labels(first: 50) {
                     nodes {
+                        id
                         name
                     }
                 }

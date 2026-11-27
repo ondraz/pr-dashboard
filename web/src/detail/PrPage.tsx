@@ -16,6 +16,7 @@ import { PrHeader } from "./PrHeader.tsx";
 import { PrSteps } from "./PrSteps.tsx";
 import { ReviewButton, ReviewPanel } from "./ReviewPanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
+import { SuggestionBatch } from "./Suggestions.tsx";
 import { prQueryKey, usePullRequest, usePullRequestLiveCheck } from "./usePullRequest.ts";
 
 function BackButton() {
@@ -139,6 +140,7 @@ export function PrPage() {
                     }
                 />
                 {reviewing && canWrite && <ReviewPanel onDone={() => setReviewing(false)} />}
+                <SuggestionBatch />
                 {wide ? (
                     <Outlet />
                 ) : (

@@ -165,6 +165,17 @@ apply as they do on github.com; merging over the base branch's rules stays on gi
   it first (**Close with comment**)
 - **Edit** beside the title renames the PR, and **Edit** on the description changes it, kept as a draft
   until it is saved like any comment
+- **Reviewers**, **Assignees** and **Labels** in the sidebar each have **Edit**, a menu of the repository's
+  assignable users (who are also who can review) or labels, filtered by GitHub's search as you type;
+  ticking one adds it to the PR and unticking takes it off, at once. The PR's author is never offered as
+  a reviewer. A team asked for a review has **Remove**, which withdraws the request
+- **Committing suggestions.** A comment with one `suggestion` block, on lines the head commit still has, in
+  a thread nobody resolved, has **Commit suggestion**, which commits it to the PR's branch with GitHub's
+  default message to edit, and resolves its thread. **Add suggestion to batch** gathers several instead;
+  the batch shows above the tabs, survives a reload, and **Commit suggestions** commits them all as one
+  commit. The commit is made with the Git Data API on top of the head commit the page shows, and the
+  branch only moves forward from it: if anyone pushed since, GitHub refuses and the branch is left as it
+  was. Suggestions on a PR from a fork are left to github.com
 
 ## Cross-repo grouping
 
@@ -392,7 +403,9 @@ the review first), after which the PR, or for a viewed mark the viewed state, is
 page shows what GitHub made of it. A preview is one
 `POST /markdown` per text previewed. Managing the PR works the same way: one write per action (closing
 or reopening with a comment is two), then the PR is read again. A merge's confirmation reads GitHub's
-commit message once per method.
+commit message once per method. A sidebar menu reads the repository's users or labels once per filter
+typed (after a pause), and each tick is one write. Committing suggestions reads each changed file and its
+directory's file modes once, then makes three writes (tree, commit, branch) and resolves each thread.
 
 ## Development
 

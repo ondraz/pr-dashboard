@@ -3,6 +3,14 @@ import { type ReactNode, useState } from "react";
 import type { PrSession } from "../../../shared/sessions.ts";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useWriteAccess } from "../app/writeAccess.tsx";
+import {
+    loadAssignableUsers,
+    loadLabels,
+    type PickOption,
+    removeReviewRequest,
+    setAssignee,
+    setLabel,
+} from "../github/manage.ts";
 import { dismissReview, requestReview } from "../github/review.ts";
 import { PrDraftIcon, PrOpenIcon, SparkIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
@@ -13,17 +21,38 @@ import { type SessionRole, sessionLink } from "../logic/sessionLinks.ts";
 import type { StackNode } from "../logic/stacks.ts";
 import { timeAgo } from "../logic/time.ts";
 import { usePrListContext } from "./listContext.ts";
+import { Picker } from "./Picker.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 import { usePullRequestStack } from "./usePullRequest.ts";
 import { usePrWrite } from "./useWrite.ts";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
     return (
         <section className="sidebar-section" aria-label={title}>
-            <h2>{title}</h2>
+            <div className="sidebar-heading">
+                <h2>{title}</h2>
+                {action}
+            </div>
             {children}
         </section>
     );
+}
+
+/** The Edit button of a section the reader can change, and the picker it opens. */
+function useEditing(kind: string, allowed: boolean) {
+    const [editing, setEditing] = useState(false);
+    const button = allowed ? (
+        <button
+            type="button"
+            className="link-btn sidebar-edit"
+            aria-label={`Edit ${kind}`}
+            aria-expanded={editing}
+            onClick={() => setEditing(!editing)}
+        >
+            Edit
+        </button>
+    ) : null;
+    return { editing: allowed && editing, close: () => setEditing(false), button };
 }
 
 const None = ({ text = "None" }: { text?: string }) => <p className="muted">{text}</p>;
@@ -44,11 +73,25 @@ function ReviewerActions({ reviewer }: { reviewer: Reviewer }) {
     const [message, setMessage] = useState("");
     const ask = usePrWrite((client) => requestReview(client, route, reviewer.name));
     const dismiss = usePrWrite((client, text: string) => dismissReview(client, reviewer.reviewId ?? "", text));
+    const withdraw = usePrWrite((client) =>
+        removeReviewRequest(client, route, { teamSlug: reviewer.name.split("/").at(-1) ?? reviewer.name }),
+    );
     if (!canWrite || detail.pr.state !== "OPEN") return null;
     const reRequest = canReRequest(reviewer, github?.login ?? null, detail.pr.author?.login ?? null);
-    const error = ask.error ?? dismiss.error;
+    const error = ask.error ?? dismiss.error ?? withdraw.error;
     return (
         <>
+            {reviewer.team && reviewer.state === "REQUESTED" && (
+                <button
+                    type="button"
+                    className="link-btn reviewer-action"
+                    title={`Withdraw the request for ${reviewer.name}'s review`}
+                    disabled={withdraw.isPending}
+                    onClick={() => withdraw.mutate(undefined)}
+                >
+                    Remove
+                </button>
+            )}
             {reRequest && (
                 <button
                     type="button"
@@ -101,13 +144,34 @@ function ReviewerActions({ reviewer }: { reviewer: Reviewer }) {
 }
 
 function Reviewers() {
-    const { pr } = useOpenPr().detail;
-    const list = reviewers(
-        (pr.reviewRequests?.nodes ?? []).map((request) => request?.requestedReviewer),
-        pr.latestReviews?.nodes ?? [],
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
+    const { canWrite } = useWriteAccess(route);
+    const requested = (pr.reviewRequests?.nodes ?? []).map((request) => request?.requestedReviewer);
+    const list = reviewers(requested, pr.latestReviews?.nodes ?? []);
+    const { editing, close, button } = useEditing("reviewers", canWrite && pr.state === "OPEN");
+    const toggle = usePrWrite((client, { option, on }: { option: PickOption; on: boolean }) =>
+        on ? requestReview(client, route, option.name) : removeReviewRequest(client, route, { login: option.name }),
+    );
+    const current = requested.flatMap((reviewer) =>
+        reviewer && "login" in reviewer
+            ? [{ id: `user:${reviewer.login}`, name: reviewer.login, avatarUrl: null }]
+            : [],
     );
     return (
-        <Section title="Reviewers">
+        <Section title="Reviewers" action={button}>
+            {editing && (
+                <Picker
+                    kind="reviewers"
+                    current={current}
+                    load={(client, query) => loadAssignableUsers(client, route, query)}
+                    exclude={pr.author ? [pr.author.login] : []}
+                    busy={toggle.isPending}
+                    onToggle={(option, on) => toggle.mutate({ option, on })}
+                    onClose={close}
+                />
+            )}
+            {toggle.error && <p className="error-text">{toggle.error.message}</p>}
             {list.length ? (
                 <ul className="sidebar-list">
                     {list.map((reviewer) => {
@@ -140,9 +204,27 @@ function Reviewers() {
 }
 
 function Assignees() {
-    const assignees = (useOpenPr().detail.pr.assignees.nodes ?? []).filter((user) => !!user);
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
+    const { canWrite } = useWriteAccess(route);
+    const assignees = (pr.assignees.nodes ?? []).filter((user) => !!user);
+    const { editing, close, button } = useEditing("assignees", canWrite && pr.viewerCanUpdate);
+    const toggle = usePrWrite((client, { option, on }: { option: PickOption; on: boolean }) =>
+        setAssignee(client, pr.id, option.id, on),
+    );
     return (
-        <Section title="Assignees">
+        <Section title="Assignees" action={button}>
+            {editing && (
+                <Picker
+                    kind="assignees"
+                    current={assignees.map((user) => ({ id: user.id, name: user.login, avatarUrl: user.avatarUrl }))}
+                    load={(client, query) => loadAssignableUsers(client, route, query)}
+                    busy={toggle.isPending}
+                    onToggle={(option, on) => toggle.mutate({ option, on })}
+                    onClose={close}
+                />
+            )}
+            {toggle.error && <p className="error-text">{toggle.error.message}</p>}
             {assignees.length ? (
                 <ul className="sidebar-list">
                     {assignees.map((user) => (
@@ -164,9 +246,27 @@ function Assignees() {
 }
 
 function Labels() {
-    const labels = (useOpenPr().detail.pr.labels?.nodes ?? []).filter((label) => !!label);
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
+    const { canWrite } = useWriteAccess(route);
+    const labels = (pr.labels?.nodes ?? []).filter((label) => !!label);
+    const { editing, close, button } = useEditing("labels", canWrite && pr.viewerCanUpdate);
+    const toggle = usePrWrite((client, { option, on }: { option: PickOption; on: boolean }) =>
+        setLabel(client, pr.id, option.id, on),
+    );
     return (
-        <Section title="Labels">
+        <Section title="Labels" action={button}>
+            {editing && (
+                <Picker
+                    kind="labels"
+                    current={labels.map((label) => ({ id: label.id, name: label.name, avatarUrl: null }))}
+                    load={(client, query) => loadLabels(client, route, query)}
+                    busy={toggle.isPending}
+                    onToggle={(option, on) => toggle.mutate({ option, on })}
+                    onClose={close}
+                />
+            )}
+            {toggle.error && <p className="error-text">{toggle.error.message}</p>}
             {labels.length ? (
                 <div className="pr-labels sidebar-labels">
                     {labels.map((label) => (
