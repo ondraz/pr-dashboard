@@ -84,7 +84,7 @@ export const timeline = {
 export function reviewThread(
     id: string,
     reviewId: string,
-    comments: { login: string; bodyHTML: string; reviewId?: string }[],
+    comments: { login: string; bodyHTML: string; reviewId?: string; pending?: boolean }[],
     extra: Partial<ReviewThread> = {},
 ): ReviewThread {
     return {
@@ -105,6 +105,7 @@ export function reviewThread(
                 createdAt: "2026-11-25T11:00:00Z",
                 url: `https://github.com/acme/widgets/pull/12#discussion_r${n}`,
                 bodyHTML: comment.bodyHTML,
+                state: comment.pending ? "PENDING" : "SUBMITTED",
                 diffHunk: "@@ -10,3 +10,4 @@\n const a = 1;\n-const b = 2;\n+const b = 3;\n+const c = 4;",
                 author: actor(comment.login),
                 pullRequestReview: { id: comment.reviewId ?? reviewId },
@@ -162,6 +163,8 @@ export function pullRequestFields(extra: Partial<PullRequestFields> = {}): PullR
         closingIssuesReferences: { nodes: [] },
         changedFiles: 3,
         commits: { totalCount: 2 },
+        viewerDidAuthor: false,
+        pendingReview: { nodes: [] },
         viewerLatestReview: null,
         reviews: { nodes: [] },
         ...extra,

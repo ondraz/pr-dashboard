@@ -114,12 +114,17 @@ async function withSource<T>(
     }
 }
 
-/** GraphQL answered with no data at all. */
+interface GraphqlErrorEntry {
+    message: string;
+    type?: string;
+}
+
+/** GraphQL answered with no data at all, or a mutation answered with errors. */
 export class GraphqlError extends Error {
     override name = "GraphqlError";
-    readonly errors: readonly { message: string }[];
+    readonly errors: readonly GraphqlErrorEntry[];
 
-    constructor(errors: readonly { message: string }[]) {
+    constructor(errors: readonly GraphqlErrorEntry[]) {
         super(errors.map((error) => error.message).join("; ") || "GraphQL request failed");
         this.errors = errors;
     }
@@ -128,7 +133,7 @@ export class GraphqlError extends Error {
 export interface GraphqlResult<T> {
     data: T;
     /** Errors that came with data, e.g. one alias naming a repository the token cannot see. */
-    errors: readonly { message: string }[];
+    errors: readonly GraphqlErrorEntry[];
 }
 
 /** Runs a typed GraphQL document, keeping the data of a response that is only partly in error. */
@@ -138,7 +143,7 @@ export async function graphql<TResult, TVariables>(
     variables: TVariables,
 ): Promise<GraphqlResult<TResult>> {
     const response = await client.request("POST /graphql", { query: String(document), variables });
-    const body = response.data as { data?: TResult | null; errors?: { type?: string; message: string }[] };
+    const body = response.data as { data?: TResult | null; errors?: GraphqlErrorEntry[] };
     // GraphQL reports an exhausted limit with a 200 and an error of this type.
     if (body.errors?.some((error) => error.type === "RATE_LIMITED")) {
         const limit = readRateLimit(response.headers);
@@ -146,4 +151,35 @@ export async function graphql<TResult, TVariables>(
     }
     if (!body.data) throw new GraphqlError(body.errors ?? []);
     return { data: body.data, errors: body.errors ?? [] };
+}
+
+/** GitHub refused a change: the sign-in may read the repository but not write to it. */
+export class WriteRefused extends Error {
+    override name = "WriteRefused";
+}
+
+/** A write's failure, with a refusal of the permission it needs told apart from everything else. */
+export function writeError(error: unknown): unknown {
+    if (error instanceof GraphqlError && error.errors.some((entry) => entry.type === "FORBIDDEN")) {
+        return new WriteRefused(error.message);
+    }
+    if (isErrorWithResponse(error) && error.status === 403) {
+        return new WriteRefused((error.response && errorMessage(error.response)) || "GitHub refused this change (403)");
+    }
+    return error;
+}
+
+/** Runs a GraphQL mutation; unlike a read, any error at all means it did not go through. */
+export async function mutate<TResult, TVariables>(
+    client: GitHubClient,
+    document: DocumentTypeDecoration<TResult, TVariables>,
+    variables: TVariables,
+): Promise<TResult> {
+    try {
+        const { data, errors } = await graphql(client, document, variables);
+        if (errors.length) throw new GraphqlError(errors);
+        return data;
+    } catch (error) {
+        throw writeError(error);
+    }
 }

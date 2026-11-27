@@ -2,8 +2,9 @@ import { graphql as mockGraphql } from "msw/graphql";
 import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { createGitHubClient, GraphqlError, graphql } from "./client.ts";
+import { createGitHubClient, GraphqlError, graphql, mutate, WriteRefused, writeError } from "./client.ts";
 import { RateLimitError, RateLimits } from "./rateLimits.ts";
+import { addCommentMutation } from "./review.ts";
 
 const server = setupServer();
 beforeAll(() => server.listen({ onUnhandledFrame: "error" }));
@@ -244,5 +245,59 @@ describe("createGitHubClient with a token source", () => {
             token: { current: async () => "ghu_revoked", refused: async () => null },
         });
         await expect(client.request("GET /user")).rejects.toMatchObject({ status: 401 });
+    });
+});
+
+describe("writes", () => {
+    it("takes any error from a mutation as a failure, and a FORBIDDEN one as a refusal", async () => {
+        let answer: Record<string, unknown> = {};
+        server.use(http.post("https://api.github.com/graphql", () => HttpResponse.json(answer)));
+        const client = createGitHubClient({ token: "ghu_test" });
+        const variables = { subjectId: "PR_1", body: "Hi" };
+
+        answer = { data: { addComment: { commentEdge: { node: { id: "IC_1" } } } } };
+        await expect(mutate(client, addCommentMutation, variables)).resolves.toEqual(answer.data);
+
+        answer = {
+            data: { addComment: null },
+            errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }],
+        };
+        const refused = await mutate(client, addCommentMutation, variables).catch((error: unknown) => error);
+        expect(refused).toBeInstanceOf(WriteRefused);
+        expect((refused as Error).message).toBe("Resource not accessible by integration");
+
+        answer = { data: { addComment: null }, errors: [{ type: "UNPROCESSABLE", message: "Body is too long" }] };
+        const failed = await mutate(client, addCommentMutation, variables).catch((error: unknown) => error);
+        expect(failed).toBeInstanceOf(GraphqlError);
+        expect((failed as Error).message).toBe("Body is too long");
+    });
+
+    it("tells a REST 403 refusal apart from a rate limit", async () => {
+        server.use(
+            http.post("https://api.github.com/repos/acme/widgets/issues/1/comments", ({ request }) =>
+                request.headers.get("x-limit") === "yes"
+                    ? HttpResponse.json(
+                          { message: "API rate limit exceeded" },
+                          { status: 403, headers: limitHeaders(0) },
+                      )
+                    : HttpResponse.json({ message: "Resource not accessible by integration" }, { status: 403 }),
+            ),
+        );
+        const client = createGitHubClient({ token: "ghu_test" });
+        const post = (limited: boolean) =>
+            client
+                .request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
+                    owner: "acme",
+                    repo: "widgets",
+                    issue_number: 1,
+                    body: "Hi",
+                    headers: limited ? { "x-limit": "yes" } : {},
+                })
+                .catch((error: unknown) => writeError(error));
+
+        const refused = await post(false);
+        expect(refused).toBeInstanceOf(WriteRefused);
+        expect((refused as Error).message).toBe("Resource not accessible by integration");
+        expect(await post(true)).toBeInstanceOf(RateLimitError);
     });
 });

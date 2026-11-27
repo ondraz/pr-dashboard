@@ -1,6 +1,7 @@
 import { CommentIcon, ConflictIcon, MergeIcon, PrDraftIcon, PrOpenIcon } from "../list/icons.tsx";
 import { External, GitHubLink, MergeBadge, SessionBadge } from "../list/PrRows.tsx";
 import { unresolvedBadge } from "../logic/badges.ts";
+import { isPendingThread } from "../logic/conversation.ts";
 import type { AutoMerge } from "../logic/stacks.ts";
 import { prUnresolvedSummary } from "../logic/unresolved.ts";
 import { usePrListContext } from "./listContext.ts";
@@ -43,7 +44,10 @@ export function PrHeader() {
     const position = stack.find((node) => node.number === pr.number);
     const unresolved = unresolvedBadge({
         html_url: pr.url,
-        ...prUnresolvedSummary(threads, pr.reviews?.nodes ?? []),
+        ...prUnresolvedSummary(
+            threads.filter((thread) => !isPendingThread(thread)),
+            pr.reviews?.nodes ?? [],
+        ),
     });
     const autoMerge: AutoMerge | null = pr.autoMergeRequest
         ? {

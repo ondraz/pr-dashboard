@@ -1,6 +1,6 @@
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { External } from "../list/PrRows.tsx";
-import { hunkTail } from "../logic/conversation.ts";
+import { hunkTail, isPendingThread } from "../logic/conversation.ts";
 import { timeAgo } from "../logic/time.ts";
 import { Markdown } from "./Markdown.tsx";
 
@@ -44,6 +44,7 @@ export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDif
                     {thread.path}
                     {where}
                 </code>
+                {isPendingThread(thread) && <span className="thread-tag pending">Pending</span>}
                 {thread.isOutdated && <span className="thread-tag">Outdated</span>}
                 {thread.isResolved && <span className="thread-tag">Resolved</span>}
             </summary>
@@ -61,6 +62,9 @@ export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDif
                 <div key={comment.id} className="thread-comment">
                     <div className="thread-comment-header">
                         <Who actor={comment.author} /> <When at={comment.createdAt} href={comment.url} />
+                        {comment.state === "PENDING" && comment !== first && (
+                            <span className="thread-tag pending">Pending</span>
+                        )}
                     </div>
                     <Markdown html={comment.bodyHTML} />
                 </div>

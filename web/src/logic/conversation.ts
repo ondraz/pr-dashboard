@@ -54,6 +54,11 @@ export function threadReviewId(thread: ReviewThread): string | null {
     return thread.comments.nodes?.[0]?.pullRequestReview?.id ?? null;
 }
 
+/** A thread the viewer started in their pending review, which nobody else sees until it is submitted. */
+export function isPendingThread(thread: ReviewThread): boolean {
+    return thread.comments.nodes?.[0]?.state === "PENDING";
+}
+
 /**
  * The Conversation tab, top to bottom. Each review carries the threads it started, as on GitHub; a
  * reply posted later is its own review with nothing else in it, and those are left out, since the
@@ -67,6 +72,7 @@ export function buildConversation(
     const threadsByReview = new Map<string, ReviewThread[]>();
     const orphans: ReviewThread[] = [];
     for (const thread of threads) {
+        if (isPendingThread(thread)) continue;
         const reviewId = threadReviewId(thread);
         if (!reviewId) {
             orphans.push(thread);

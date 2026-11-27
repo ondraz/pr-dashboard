@@ -58,6 +58,11 @@ describe("buildConversation", () => {
         expect(items).toEqual([]);
     });
 
+    it("leaves out a pending thread even when its review is not in the timeline read", () => {
+        const pending = reviewThread("T_9", "PRR_9", [{ login: "alice", bodyHTML: "<p>Draft.</p>", pending: true }]);
+        expect(buildConversation([], [pending])).toEqual([]);
+    });
+
     it("lists threads whose review is not in the timeline after it", () => {
         const stray = reviewThread("T_2", "PRR_gone", [{ login: "bob", bodyHTML: "<p>Hm</p>" }]);
         const items = buildConversation([timeline.comment("IC_1", "bob", "<p>Hi</p>")], [stray]);

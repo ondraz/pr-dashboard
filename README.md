@@ -99,8 +99,33 @@ one in the list as its tab, filters and grouping currently show it.
 
 The page refreshes on the list's schedule. In live mode it has a change check of its own, like the
 list's, which also notices a check finishing and GitHub working out mergeability; otherwise it
-refreshes on the fixed interval, or on returning to the tab for "on access". It is read-only;
-nothing on it writes to GitHub.
+refreshes on the fixed interval, or on returning to the tab for "on access".
+
+## Reviewing
+
+Signed in through the GitHub App, the PR page reviews as github.com does, and what it posts shows
+as you. With a fine-grained token it stays read-only: the actions are hidden and the tab bar says
+**Read-only token**. If GitHub refuses a change (the app is not installed on the repository, or
+lacks a permission), the page hides the actions for that repository and says why.
+
+- **Comments on the diff.** The `+` beside a line of **All changes** opens a comment on it; drag
+  across line numbers first, or pick **Comment on lines from**, to comment on a range within one
+  hunk. **Comment on file** comments on the file as a whole. On the new side, **Suggest a change**
+  puts the selected lines in a `suggestion` block to edit. A comment goes into your pending review
+  (**Start a review**, then **Add review comment**), which nobody else sees until you submit it, and
+  which shows in the diff marked **Pending**. **Add single comment** posts one at once instead; as
+  on GitHub, it is offered only while no review is pending. Comments are made on the diff at the
+  head commit the page shows, so a commit's or a range's diff takes none
+- **Review changes** (**Finish your review (N)** while comments are pending) opens the summary, with
+  **Comment**, **Approve** or **Request changes**. On your own PR only a comment is possible, and a
+  comment or a request for changes needs a summary or a pending comment. **Discard review** throws
+  the pending review away, after asking
+- **Comment** at the foot of the Conversation tab comments on the PR itself
+- Every text box has **Preview**, which GitHub renders (`POST /markdown`), sanitised like any body
+
+Nothing posts by accident: a comment on the diff goes into the pending review unless you choose
+otherwise. Every unsent comment is kept in `localStorage` per PR, file and line as you type, so a
+refresh or a reload never loses it, and its box reopens where it was. **Cancel** drops it.
 
 ## Cross-repo grouping
 
@@ -195,7 +220,7 @@ saved token loads the list, the sign-in form stays hidden, so to move from a tok
 3. Under **Webhook**, untick **Active**
 4. Under **Repository permissions**, set **Pull requests** and **Contents** to **Read and
    write**, and **Checks**, **Commit statuses** and **Actions** to **Read-only**. The write
-   permissions are for the review and merge actions the dashboard is gaining; nothing writes yet
+   permissions are for reviewing (see [Reviewing](#reviewing)) and the merge actions to come
 5. Under **Where can this GitHub App be installed?**, pick **Only on this account**, then
    **Create GitHub App**
 6. Under **Install App**, install it on the organization and choose the repositories to include
@@ -225,7 +250,8 @@ Without a client id the page offers only the token below.
 Tick **Remember across sessions** to keep the token in `localStorage`; otherwise it lives
 in `sessionStorage` and is gone when the tab closes. **Clear token** removes it. The token
 never leaves the browser except in requests to `api.github.com`. When you are signed in through
-the app as well, the app's token is used.
+the app as well, the app's token is used. With the token alone the dashboard is read-only, even
+if the token could write.
 
 ## Running
 
@@ -319,6 +345,10 @@ once loaded. The menu above the diff reads the commit list as the Commits tab do
 read of the PR, one lookup per PR below it and one per level above it, at most 5 each way; with
 ETags these cost nothing once unchanged. In live mode an open PR adds its own change check, one more
 point every 15 seconds, so about 480 points an hour with the list's.
+
+A review action is one write (two for the first comment of a review, which opens the review first),
+after which the PR is read again so the page shows what GitHub made of it. A preview is one
+`POST /markdown` per text previewed.
 
 ## Development
 

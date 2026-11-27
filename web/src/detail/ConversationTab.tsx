@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useMemo } from "react";
+import { useWriteAccess } from "../app/writeAccess.tsx";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { CommitIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
@@ -14,6 +15,7 @@ import { labelColor } from "../logic/labels.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MergeBox } from "./MergeBox.tsx";
+import { PrComment } from "./PrComment.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 import { Thread, When, Who } from "./Thread.tsx";
 
@@ -212,6 +214,7 @@ export function ConversationTab() {
     const { route, detail } = useOpenPr();
     const { pr, timeline, threads, complete } = detail;
     const items = useMemo(() => buildConversation(timeline, threads), [timeline, threads]);
+    const { canWrite } = useWriteAccess(route);
     return (
         <div className="conversation">
             <Card
@@ -233,6 +236,7 @@ export function ConversationTab() {
                 </div>
             )}
             <MergeBox />
+            {canWrite && <PrComment />}
         </div>
     );
 }

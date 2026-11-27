@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useMatchRoute, useParams } from "@tanstack/react-router";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import { useAuth } from "../app/AuthProvider.tsx";
 import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useBackToList } from "../app/listReturn.tsx";
 import { SignIn } from "../app/SignIn.tsx";
+import { useWriteAccess } from "../app/writeAccess.tsx";
 import type { PullRequestDetail } from "../github/pullRequest.ts";
 import { ArrowLeftIcon, RepoIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
@@ -13,6 +14,7 @@ import { timeAgo } from "../logic/time.ts";
 import { PrContext } from "./PrContext.tsx";
 import { PrHeader } from "./PrHeader.tsx";
 import { PrSteps } from "./PrSteps.tsx";
+import { ReviewButton, ReviewPanel } from "./ReviewPanel.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { prQueryKey, usePullRequest, usePullRequestLiveCheck } from "./usePullRequest.ts";
 
@@ -34,7 +36,7 @@ function BackButton() {
     );
 }
 
-function Tabs({ route, detail }: { route: PrRoute; detail: PullRequestDetail }) {
+function Tabs({ route, detail, actions }: { route: PrRoute; detail: PullRequestDetail; actions: ReactNode }) {
     const { pr } = detail;
     const tab = { className: "tab-btn", activeProps: { "aria-current": "page" as const } };
     return (
@@ -51,8 +53,23 @@ function Tabs({ route, detail }: { route: PrRoute; detail: PullRequestDetail }) 
             <Link {...tab} to="/$owner/$repo/pull/$number/files" params={route}>
                 Files changed <span className="tab-count">{pr.changedFiles}</span>
             </Link>
+            {actions && <div className="pr-tab-actions">{actions}</div>}
         </nav>
     );
+}
+
+/** Why the page offers no review actions, when it does not. */
+function WriteNote({ route }: { route: PrRoute }) {
+    const { reason } = useWriteAccess(route);
+    if (reason?.kind === "refused") {
+        return (
+            <div className="timeline-note write-note">
+                GitHub refused a change in {route.owner}/{route.repo} ({reason.message}), so the review actions are
+                hidden here. The GitHub App may not be installed on this repository, or lack a permission it needs.
+            </div>
+        );
+    }
+    return null;
 }
 
 /** One PR, at the same path as on GitHub: its header, tabs, the open tab and the sidebar. */
@@ -64,6 +81,8 @@ export function PrPage() {
     const queryClient = useQueryClient();
     const query = usePullRequest(route);
     const { data, error, isFetching } = query;
+    const { canWrite, reason } = useWriteAccess(route);
+    const [reviewing, setReviewing] = useState(false);
     usePullRequestLiveCheck(route, data, isFetching);
     const open = useMemo(() => (data ? { route, detail: data } : null), [route, data]);
     // The diff takes the whole width, as on GitHub.
@@ -103,7 +122,21 @@ export function PrPage() {
             <PrContext value={open}>
                 {error && <div className="error">Refresh failed: {error.message}</div>}
                 <PrHeader />
-                <Tabs route={route} detail={open.detail} />
+                <WriteNote route={route} />
+                <Tabs
+                    route={route}
+                    detail={open.detail}
+                    actions={
+                        canWrite && open.detail.pr.state === "OPEN" ? (
+                            <ReviewButton open={reviewing} onToggle={() => setReviewing(!reviewing)} />
+                        ) : reason?.kind === "token" ? (
+                            <span className="muted read-only-note" title="Sign in with the GitHub App to review here">
+                                Read-only token
+                            </span>
+                        ) : null
+                    }
+                />
+                {reviewing && canWrite && <ReviewPanel onDone={() => setReviewing(false)} />}
                 {wide ? (
                     <Outlet />
                 ) : (
