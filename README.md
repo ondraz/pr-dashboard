@@ -5,6 +5,8 @@ have access to, grouped by repository. Like [GitHub Pulls](https://github.com/pu
 but grouped per repo, aware of stacked PRs, and able to show one change spread over
 several repositories as a single set.
 
+Clicking a PR opens it in the dashboard itself (see [PR page](#pr-page)).
+
 A React app that talks to the GitHub API straight from the browser, served by a small local Node
 server that signs you in through the dashboard's GitHub App and tells the page which Claude session
 made each PR. GitHub data never passes through the server.
@@ -43,6 +45,28 @@ made each PR. GitHub data never passes through the server.
 - A `Claude` button on any PR a Claude desktop session created or pushed, which opens that
   session in the desktop app (see [Claude sessions](#claude-sessions))
 - Light and dark theme, following the system setting
+
+## PR page
+
+Clicking a PR's title opens it in the dashboard; Cmd/Ctrl-click, or the GitHub icon beside the
+title, opens it on GitHub instead. The page lives at the same path as on GitHub
+(`/owner/repo/pull/123`, `.../commits`), so swapping `github.com` for `localhost:6789` in a link
+opens the PR here, and back, forward and reload work. **Pull requests** goes back to the list,
+scrolled where it was, with its tab and collapsed sections as they were. The list keeps
+refreshing meanwhile.
+
+- The header: title, state, `base` from `head`, the author, and the list's badges (auto-merge or
+  merge-queue position, conflicts, unresolved count, cross-repo set, Claude session buttons)
+- **Conversation**: the description, then everything that happened, in order: comments, reviews
+  with the threads they started (diff excerpt, every reply, resolved and outdated ones marked and
+  resolved ones folded), commits, force-pushes, review requests, label, title and base changes,
+  draft state, closing and merging. Bodies are the HTML GitHub rendered from the Markdown, run
+  through DOMPurify once more before they reach the page
+- **Commits**: the PR's commits, by day
+- **Checks** and **Files changed** open on GitHub for now, as does a single commit's diff
+
+The page refreshes on the list's schedule: on the fixed interval, or on returning to the tab for
+"on access". It is read-only; nothing on it writes to GitHub.
 
 ## Cross-repo grouping
 
@@ -247,6 +271,10 @@ holds and each one's last update, head commit, mergeability, review decision, dr
 merge-queue position; a new or closed PR can take a minute to show, since GitHub's search index
 lags behind. A check run finishing does not count as a change, as the dashboard shows no CI.
 
+Opening a PR costs one GraphQL query for its header, description, timeline and review threads, and
+one more per further 100 timeline events or threads (up to 1,000 of each). The Commits tab is one
+more query per 100 commits.
+
 ## Development
 
 ```bash
@@ -266,7 +294,8 @@ pinned against the fictional session files in `server/fixtures/`. Dependencies a
 exactly, and `.npmrc` keeps npm from installing any version less than two weeks old.
 
 `web/` is the React app (Vite, TanStack Query and Router); see
-[the plan](docs/review-app-plan.md) for where it is going. `web/src/list/` is the list page.
+[the plan](docs/review-app-plan.md) for where it is going. `web/src/list/` is the list page and
+`web/src/detail/` the PR page; the list's data is loaded above both, so it survives opening a PR.
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
 parsing, the Copilot verdict, unresolved counts, review standing, filters and the list layout -
 as plain TypeScript without React or I/O, each pinned by unit tests.
@@ -277,7 +306,7 @@ pagination, typed GraphQL documents whose types GraphQL Code Generator writes in
 and the loaders for the three tabs. Every GET that returned an ETag is asked for again with
 `If-None-Match`, so an unchanged resource comes back as a 304, which does not count against the
 rate limit, and each response's rate-limit headers are collected per bucket for the page to
-show. Its tests, and the list's component tests (Testing Library on jsdom), run against a GitHub API
+show. Its tests, and the component tests of both pages (Testing Library on jsdom), run against a GitHub API
 mocked with MSW; nothing in them reaches GitHub.
 
 ## License

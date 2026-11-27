@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CopilotVerdict } from "./copilot.ts";
 import {
     emptyOutstandingWork,
+    prUnresolvedSummary,
     type ReviewThreadLike,
     standingVerdict,
     tallyThreads,
@@ -105,5 +106,34 @@ describe("unresolvedSummary", () => {
             copilotVerdict: null,
             unresolved: 0,
         });
+    });
+});
+
+describe("prUnresolvedSummary", () => {
+    const copilotReview = (id: string, body: string) => ({
+        id,
+        databaseId: 7,
+        state: "COMMENTED",
+        body,
+        author: { login: "copilot-pull-request-reviewer" },
+    });
+
+    it("counts open threads and a verdict that left none", () => {
+        const summary = prUnresolvedSummary(
+            [thread(false, "bob", "bob", 2, "PRR_b"), thread(true, "bob", "alice", 1, "PRR_b")],
+            [copilotReview("PRR_c", "## Changes recommended")],
+        );
+        expect(summary.unresolvedThreads).toBe(1);
+        expect(summary.unresolvedComments).toBe(2);
+        expect(summary.copilotVerdict?.label).toBe("Changes recommended");
+        expect(summary.unresolved).toBe(2);
+    });
+
+    it("leaves out a verdict whose own threads were resolved", () => {
+        const summary = prUnresolvedSummary(
+            [thread(true, "copilot-pull-request-reviewer", "alice", 1, "PRR_c")],
+            [copilotReview("PRR_c", "## Changes recommended")],
+        );
+        expect(summary.unresolved).toBe(0);
     });
 });

@@ -1,8 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useAuth } from "../app/AuthProvider.tsx";
+import { useDashboardState } from "../app/DashboardProvider.tsx";
+import { useRememberListEntry } from "../app/listReturn.tsx";
 import { SignIn } from "../app/SignIn.tsx";
 import { usePersistedChoice } from "../app/storage.ts";
+import type { DashboardView } from "../app/useDashboard.ts";
 import { type AgeFilter, applyFilters, type StatusFilter } from "../logic/filters.ts";
 import { featureId, listLayout } from "../logic/layout.ts";
 import { REFRESH_MODES, type RefreshMode } from "../logic/refresh.ts";
@@ -11,7 +14,6 @@ import { timeAgo } from "../logic/time.ts";
 import { useSetCollapsed } from "./collapse.tsx";
 import { type Grouping, MineList } from "./MineList.tsx";
 import { ReviewedList, WaitingList } from "./ReviewLists.tsx";
-import { type DashboardView, useDashboard } from "./useDashboard.ts";
 
 const TAB_LABELS: Record<Tab, string> = {
     mine: "My PRs",
@@ -181,14 +183,10 @@ export function ListPage() {
     const [status, setStatus] = usePersistedChoice<StatusFilter>("status_filter", ["all", "open", "draft"], "all");
     const [age, setAge] = usePersistedChoice<AgeFilter>("age_filter", ["recent", "all"], "recent");
     const [grouping, setGrouping] = usePersistedChoice<Grouping>("grouping", ["repo", "feature"], "repo");
-    const [mode, setMode] = usePersistedChoice<RefreshMode>(
-        "refresh_interval",
-        REFRESH_MODES.map((choice) => choice.mode),
-        "live",
-    );
     const [scrollTo, setScrollTo] = useState<string | null>(null);
-    const dashboard = useDashboard(credentials, mode);
-    const { data, error, isFetching } = dashboard;
+    const dashboard = useDashboardState();
+    useRememberListEntry();
+    const { data, error, isFetching, mode, setMode } = dashboard;
     useTick(30_000);
 
     const counts = useMemo(() => {
@@ -223,6 +221,7 @@ export function ListPage() {
         if (credentials?.kind === "app") await auth.signOut();
         else auth.clearToken();
         queryClient.removeQueries({ queryKey: ["dashboard"] });
+        queryClient.removeQueries({ queryKey: ["pr"] });
     };
 
     const signedIn = !!credentials;

@@ -1,4 +1,4 @@
-import type { CopilotVerdict } from "./copilot.ts";
+import { type CopilotVerdict, copilotVerdict, latestCopilotReview, type ReviewLike } from "./copilot.ts";
 
 export interface MergeQueueEntry {
     position?: number | null;
@@ -97,4 +97,15 @@ export function unresolvedSummary(work: OutstandingWork | null | undefined): Unr
         copilotVerdict: verdict,
         unresolved: work.threads + (verdict ? 1 : 0),
     };
+}
+
+/** What one PR owes, from every one of its review threads and its latest reviews. */
+export function prUnresolvedSummary(
+    threads: readonly (ReviewThreadLike | null)[],
+    reviews: readonly (ReviewLike | null)[],
+): UnresolvedSummary {
+    const work = emptyOutstandingWork();
+    tallyThreads(work, threads);
+    work.copilot = copilotVerdict(latestCopilotReview(reviews));
+    return unresolvedSummary(work);
 }

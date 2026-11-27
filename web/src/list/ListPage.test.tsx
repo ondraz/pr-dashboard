@@ -1,18 +1,15 @@
 // @vitest-environment jsdom
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { QueryClient } from "@tanstack/react-query";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { graphql as mockGraphql } from "msw/graphql";
 import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeviceCodePayload, PollPayload, TokenPayload } from "../../../shared/auth.ts";
 import type { PrSession } from "../../../shared/sessions.ts";
-import { AuthProvider } from "../app/AuthProvider.tsx";
 import type { AuthApi } from "../app/auth.ts";
-import { defaultServices, ServicesContext } from "../app/services.tsx";
 import { outstanding, pullJson, review, searchHit, thread } from "../github/testFixtures.ts";
-import { CollapseProvider } from "./collapse.tsx";
-import { ListPage } from "./ListPage.tsx";
+import { renderApp } from "../testApp.tsx";
 
 const API = "https://api.github.com";
 const github = mockGraphql.link(`${API}/graphql`);
@@ -161,27 +158,15 @@ class FakeAuthApi implements AuthApi {
 const queryClients: QueryClient[] = [];
 
 function renderPage(auth: AuthApi = Object.assign(new FakeAuthApi(), { configured: false })) {
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    queryClients.push(queryClient);
-    const services = {
-        ...defaultServices,
+    const app = renderApp("/", {
         auth,
         fetchSessions: async () => ({
             made: new Map([["https://github.com/acme/widgets/pull/12", madeSession]]),
             reviewed: new Map<string, PrSession>(),
         }),
-    };
-    return render(
-        <QueryClientProvider client={queryClient}>
-            <ServicesContext value={services}>
-                <AuthProvider>
-                    <CollapseProvider>
-                        <ListPage />
-                    </CollapseProvider>
-                </AuthProvider>
-            </ServicesContext>
-        </QueryClientProvider>,
-    );
+    });
+    queryClients.push(app.queryClient);
+    return app;
 }
 
 const rowOf = (title: string) => {
@@ -266,7 +251,7 @@ describe("ListPage", () => {
         expect(within(stack).getByText("Gear train").className).toBe("stack-name");
         expect(within(stack).getByText("onto main")).toBeTruthy();
         // Tip first, the colleague's base PR last and muted.
-        expect([...stack.querySelectorAll(".pr-title a")].map((link) => link.textContent)).toEqual([
+        expect([...stack.querySelectorAll(".pr-title a:not(.gh-link)")].map((link) => link.textContent)).toEqual([
             "Turn the gears",
             "Mount the gears",
             "Cast the gears",
@@ -275,6 +260,13 @@ describe("ListPage", () => {
         expect(rowOf("Cast the gears").textContent).toContain("#10 by bob");
 
         const tip = rowOf("Turn the gears");
+        // The title opens the PR here, the icon beside it on GitHub.
+        expect(within(tip).getByRole("link", { name: "Turn the gears" }).getAttribute("href")).toBe(
+            "/acme/widgets/pull/12",
+        );
+        expect(within(tip).getByRole("link", { name: "Open #12 on GitHub" }).getAttribute("href")).toBe(
+            "https://github.com/acme/widgets/pull/12",
+        );
         expect(within(tip).getByText("3/3")).toBeTruthy();
         expect(within(tip).getByText("Auto-merge").title).toBe(
             "Auto-merge enabled (squash) by alice - merges on its own once checks and reviews pass",
@@ -288,7 +280,7 @@ describe("ListPage", () => {
                 .getAttribute("href"),
         ).toBe(`claude://claude.ai/epitaxy/${madeSession.id}`);
         expect(within(tip).getByText("Review pending")).toBeTruthy();
-        expect(within(tip).getByRole("link", { name: "#11" })).toBeTruthy();
+        expect(within(tip).getByRole("link", { name: "#11" }).getAttribute("href")).toBe("/acme/widgets/pull/11");
         expect(within(rowOf("Mount the gears")).getByText("Approved")).toBeTruthy();
 
         const endpoint = rowOf("GEAR-5: add the endpoint");
