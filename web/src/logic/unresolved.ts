@@ -14,6 +14,7 @@ export interface ReviewThreadLike {
             | readonly ({
                   pullRequestReview?: { id: string } | null;
                   author?: { login: string } | null;
+                  state?: string;
               } | null)[]
             | null;
     } | null;
@@ -58,6 +59,8 @@ export function tallyThreads(
         if (!thread) continue;
         // A verdict that left comments is settled by them - counted while open, done once resolved.
         const first = thread.comments?.nodes?.[0];
+        // The viewer's pending review is theirs alone until it is submitted, so it owes nobody anything yet.
+        if (first?.state === "PENDING") continue;
         if (first?.pullRequestReview) work.threadedReviews.add(first.pullRequestReview.id);
         if (thread.isResolved) continue;
         work.threads++;

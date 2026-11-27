@@ -42,6 +42,7 @@ export const reviewThreadPageFragment = graphql(`
             comments(first: 1) {
                 totalCount
                 nodes {
+                    state
                     pullRequestReview {
                         id
                     }

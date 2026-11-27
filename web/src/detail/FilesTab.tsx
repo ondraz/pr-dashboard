@@ -321,7 +321,7 @@ export function FilesTab() {
                                         : `https://github.com/${route.owner}/${route.repo}/blob/${headOid}/${encodePath(file.path)}`
                                 }
                                 filesUrl={filesUrl}
-                                composers={(spec.kind === "all" && composers.get(file.path)) || NO_COMPOSERS}
+                                composers={(onComment && composers.get(file.path)) || NO_COMPOSERS}
                                 onComment={onComment}
                             />
                         ))}

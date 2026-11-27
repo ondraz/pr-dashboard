@@ -80,6 +80,7 @@ const server = setupServer(
     ),
     github.mutation("AddPendingReview", ({ variables }) => {
         record("AddPendingReview", variables);
+        if (refuseWrites) return HttpResponse.json(REFUSAL);
         fields = { ...fields, pendingReview: pending("PRR_new", 0) };
         return HttpResponse.json({ data: { addPullRequestReview: { pullRequestReview: { id: "PRR_new" } } } });
     }),
@@ -354,6 +355,20 @@ describe("reviewing", () => {
         expect(screen.queryByRole("button", { name: "Review changes" })).toBeNull();
         expect(localStorage.getItem(`${DRAFTS}comment`)).toBe("Can I?");
     });
+
+    it("hides a refused comment on the diff with the other actions, keeping its draft", async () => {
+        refuseWrites = true;
+        open("/acme/widgets/pull/12/files");
+        await startComment(3);
+        const form = await screen.findByRole("form", { name: "Comment on line 3 on the new side" });
+        fireEvent.change(within(form).getByRole("textbox"), { target: { value: "Can I?" } });
+        fireEvent.click(within(form).getByRole("button", { name: "Start a review" }));
+
+        expect(await screen.findByText(/GitHub refused a change in acme\/widgets/)).toBeTruthy();
+        expect(screen.queryByRole("form", { name: /Comment on line 3/ })).toBeNull();
+        expect((await gears()).querySelector(".diff-add-widget")).toBeNull();
+        expect(localStorage.getItem(`${DRAFTS}line:RIGHT:3-3:src/gears.ts`)).toBe("Can I?");
+    });
 });
 
 describe("submitting a review", () => {
@@ -395,6 +410,12 @@ describe("submitting a review", () => {
                 { pullRequestId: "PR_12", commitOID: HEAD, event: "COMMENT", body: "Notes to self." },
             ]),
         );
+    });
+
+    it("still finishes a review left pending on a PR that has since closed", async () => {
+        fields = { ...fields, state: "CLOSED", pendingReview: pending("PRR_open", 1) };
+        open("/acme/widgets/pull/12");
+        expect(await screen.findByRole("button", { name: "Finish your review (1)" })).toBeTruthy();
     });
 
     it("discards the pending review only once confirmed", async () => {
