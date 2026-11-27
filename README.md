@@ -5,8 +5,9 @@ have access to, grouped by repository. Like [GitHub Pulls](https://github.com/pu
 but grouped per repo, aware of stacked PRs, and able to show one change spread over
 several repositories as a single set.
 
-No build step and no backend: one static `index.html` that talks to the GitHub REST API
-straight from the browser with a token you provide.
+One static `index.html` that talks to the GitHub API straight from the browser with a token
+you provide, served by a small local Node server that also tells it which Claude session made
+each PR. The page has no build step, and GitHub data never passes through the server.
 
 ## Features
 
@@ -121,11 +122,17 @@ never leaves the browser except in requests to `api.github.com`.
 
 ## Running
 
+Needs Node 24 or newer (the version is pinned in `.nvmrc`), which runs the server's TypeScript
+directly. The first `make serve` installs the dependencies with `npm ci`.
+
 ```bash
 make serve          # serve on http://localhost:6789 and open a browser
 make serve PORT=8080
 make stop           # stop the server
 ```
+
+The server binds to `127.0.0.1` and serves only the page and `/sessions.json`; any other path
+is a 404.
 
 Opening `index.html` directly over `file://` also works in Safari, which isolates
 `localStorage` per file. Firefox and Chrome share `localStorage` across all local files,
@@ -133,7 +140,7 @@ so any other local page could read the token there - use the localhost server in
 
 ## Claude sessions
 
-`make serve` runs [serve.py](serve.py), which serves the page and also answers
+`make serve` runs the server in [server/](server/), which serves the page and also answers
 `/sessions.json`: each PR URL mapped to the most recently active Claude session that made it,
 and to the one that reviewed it. It reads two places:
 
@@ -184,6 +191,18 @@ In live mode the change check is one GraphQL query (1 point of the 5,000-an-hour
 holds and each one's last update, head commit, mergeability, review decision, draft state and
 merge-queue position; a new or closed PR can take a minute to show, since GitHub's search index
 lags behind. A check run finishing does not count as a change, as the dashboard shows no CI.
+
+## Development
+
+```bash
+make test           # lint, type check and tests, as CI runs them on every PR
+make format         # format and fix lint findings with Biome
+```
+
+`server/` holds the local server (Hono on `node:http`, run by Node without a build), and
+`shared/` the types of the payloads it answers. Tests run with Vitest; the session parsing is
+pinned against the fictional session files in `server/fixtures/`. Dependencies are pinned
+exactly, and `.npmrc` keeps npm from installing any version less than two weeks old.
 
 ## License
 

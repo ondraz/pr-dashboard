@@ -1,0 +1,10 @@
+{
+  "sessionId": "local_66666666-6666-4666-8666-666666666666",
+  "title": "Older session on the flaky test",
+  "lastActivityAt": 1700000050000,
+  "prs": [
+    {
+      "url": "https://github.com/example-org/widgets/pull/3"
+    }
+  ]
+}
