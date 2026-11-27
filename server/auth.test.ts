@@ -242,6 +242,15 @@ describe("AuthService token", () => {
         expect(await store.read()).toMatchObject({ refreshToken: "ghr_refresh0" });
     });
 
+    it("hands out a token with time left while GitHub cannot renew it, but never a refused one", async () => {
+        await store.write(stored({ accessTokenExpiresAt: now + REFRESH_MARGIN_MS - 1 }));
+        github.reply(TOKEN, new TypeError("fetch failed"), new TypeError("fetch failed"));
+        const auth = service();
+        expect(await auth.token()).toMatchObject({ status: "signed-in", accessToken: "ghu_access0" });
+        await expect(auth.token("ghu_access0")).rejects.toThrow("fetch failed");
+        expect(github.callsTo(TOKEN)).toHaveLength(2);
+    });
+
     it("ignores tokens issued to another app", async () => {
         await store.write(stored({ clientId: "Iv23liANOTHERAPP" }));
         expect(await service().token()).toEqual({ status: "signed-out", configured: true });
@@ -383,6 +392,8 @@ describe("config", () => {
         expect(readClientId({}, file)).toBeNull();
         writeFileSync(file, JSON.stringify({ githubAppClientId: 42 }));
         expect(() => readClientId({}, file)).toThrow(/githubAppClientId must be a non-empty string/);
+        writeFileSync(file, "{ githubAppClientId: ");
+        expect(() => readClientId({}, file)).toThrow(file);
     });
 
     it("keeps the tokens under the user's config directory", () => {

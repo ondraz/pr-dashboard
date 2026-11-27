@@ -124,7 +124,9 @@ authorization until you revoke it under
 
 The app only reaches repositories it is installed on. A PR anywhere else (a personal repository,
 an open-source contribution) drops out of the list. A fine-grained token still reaches those, but
-only while you are signed out of the app, since the app's token wins when both are there.
+only while you are signed out of the app, since the app's token wins when both are there. While a
+saved token loads the list, the sign-in form stays hidden, so to move from a token to the app click
+**Clear token** first.
 
 **Registering the app** is done once, by an owner of the organization:
 

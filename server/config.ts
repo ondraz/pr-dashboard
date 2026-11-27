@@ -20,7 +20,12 @@ export function readClientId(env: NodeJS.ProcessEnv = process.env, configFile = 
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
         throw error;
     }
-    const config: unknown = JSON.parse(text);
+    let config: unknown;
+    try {
+        config = JSON.parse(text);
+    } catch (error) {
+        throw new Error(`${configFile}: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const clientId = (config as { githubAppClientId?: unknown } | null)?.githubAppClientId;
     if (clientId === undefined) return null;
     if (typeof clientId !== "string" || !clientId.trim()) {

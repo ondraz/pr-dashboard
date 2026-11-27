@@ -71,6 +71,7 @@ export class AuthService {
                 tokens = await oauth.refresh(stored.refreshToken);
             } catch (error) {
                 if (error instanceof OAuthError && error.code === "bad_refresh_token") return this.forget();
+                if (stored.accessToken !== refused && stored.accessTokenExpiresAt > now) return signedIn(stored);
                 throw error;
             }
             const next = { ...tokens, clientId };
