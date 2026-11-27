@@ -6,7 +6,7 @@ import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthApi } from "../app/auth.ts";
-import { pullRequestFields, pullRequestResponse, reviewThread } from "../github/prFixtures.ts";
+import { commitChecksResponse, pullRequestFields, pullRequestResponse, reviewThread } from "../github/prFixtures.ts";
 import type { PullRequestFields, ReviewThread } from "../github/pullRequest.ts";
 import { renderApp } from "../testApp.tsx";
 
@@ -64,6 +64,7 @@ const server = setupServer(
         }),
     ),
     github.query("PullRequestDetail", () => HttpResponse.json(pullRequestResponse(fields, [], threads))),
+    github.query("CommitChecks", () => HttpResponse.json(commitChecksResponse(null))),
     github.query("SuggestionTree", ({ variables }) => {
         calls.push({ name: "SuggestionTree", body: variables });
         return HttpResponse.json({

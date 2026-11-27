@@ -18,6 +18,8 @@ import type { PullRequestFields, ReviewThread, TimelineNode } from "../github/pu
 import { renderApp } from "../testApp.tsx";
 
 const API = "https://api.github.com";
+// The side panel quotes each open thread too; these tests are about the conversation's copy.
+const IN_CONVERSATION = { selector: ".conversation *" };
 const github = mockGraphql.link(`${API}/graphql`);
 const PATCH = "@@ -1,2 +1,2 @@\n const teeth = 12;\n-const ratio = 2;\n+const ratio = 3;";
 
@@ -140,7 +142,8 @@ function open(path: string, auth: AuthApi = signedIn) {
     return app;
 }
 
-const thread = () => screen.findByText("Why 3?").then((text) => text.closest("details") as HTMLDetailsElement);
+const thread = () =>
+    screen.findByText("Why 3?", IN_CONVERSATION).then((text) => text.closest("details") as HTMLDetailsElement);
 
 beforeAll(() => {
     server.listen({ onUnhandledFrame: "error" });
@@ -287,7 +290,7 @@ describe("your own comments", () => {
         open("/acme/widgets/pull/12");
         const details = await thread();
         const mine = (await within(details).findByText("Oops, wrong line.")).closest(".thread-comment") as HTMLElement;
-        const theirs = within(details).getByText("Why 3?").closest(".thread-comment") as HTMLElement;
+        const theirs = within(details).getByText("Why 3?", IN_CONVERSATION).closest(".thread-comment") as HTMLElement;
         expect(within(theirs).queryByRole("button", { name: "Edit" })).toBeNull();
         fireEvent.click(within(mine).getByRole("button", { name: "Delete" }));
         expect(within(mine).getByText("Delete this comment?")).toBeTruthy();

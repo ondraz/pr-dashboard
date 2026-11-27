@@ -1,16 +1,8 @@
 import { External } from "../list/PrRows.tsx";
-import { type CheckEntry, checkDuration, groupChecks } from "../logic/checks.ts";
-import type { CheckGroup } from "../logic/mergeBox.ts";
+import { type CheckEntry, checkDuration, CHECK_GROUP as GROUP, groupChecks } from "../logic/checks.ts";
 import { Annotation } from "./Annotation.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 import { usePullRequestChecks } from "./usePullRequest.ts";
-
-const GROUP = {
-    failing: { heading: "Failing", tone: "fail", mark: "✕" },
-    pending: { heading: "In progress", tone: "pending", mark: "●" },
-    successful: { heading: "Successful", tone: "ok", mark: "✓" },
-    skipped: { heading: "Skipped", tone: "neutral", mark: "–" },
-} as const satisfies Record<CheckGroup, unknown>;
 
 const ROLLUP_TITLE: Record<string, string> = {
     SUCCESS: "All checks have passed",

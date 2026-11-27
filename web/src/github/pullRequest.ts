@@ -1,3 +1,4 @@
+import type { Endpoints } from "@octokit/types";
 import { prFingerprint } from "../logic/fingerprint.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { type GitHubClient, graphql } from "./client.ts";
@@ -33,6 +34,11 @@ export interface PullRequestDetail {
     threads: ReviewThread[];
     /** False when the timeline or the threads ran past what the page reads. */
     complete: boolean;
+    /**
+     * Timeline entries GitHub left out with an error. A token without Contents read access gets the
+     * PR's commits that way, so the Conversation tab reads them over REST instead.
+     */
+    withheld: number;
 }
 
 export interface PullRequestCommits {
@@ -54,24 +60,32 @@ interface Page<N> {
     nodes?: readonly (N | null)[] | null;
 }
 
-const present = <N>(nodes: readonly (N | null)[] | null | undefined): N[] =>
-    (nodes ?? []).filter((node): node is N => node !== null);
-
-/** The nodes of `first` and of the pages after it, up to the cap; `complete` is false when it was hit. */
+/**
+ * The nodes of `first` and of the pages after it, up to the cap; `complete` is false when it was hit.
+ * `dropped` counts the nodes GitHub answered with null, which it does for what the sign-in may not read.
+ */
 async function collectPages<N>(
     first: Page<N>,
     next: (after: string) => Promise<Page<N> | null | undefined>,
-): Promise<{ nodes: N[]; complete: boolean }> {
-    const nodes = present(first.nodes);
+): Promise<{ nodes: N[]; complete: boolean; dropped: number }> {
+    const nodes: N[] = [];
+    let dropped = 0;
+    const take = (page: Page<N>) => {
+        for (const node of page.nodes ?? []) {
+            if (node === null) dropped++;
+            else nodes.push(node);
+        }
+    };
+    take(first);
     let page: Page<N> = first;
     for (let read = 1; page.pageInfo.hasNextPage && page.pageInfo.endCursor; read++) {
-        if (read === PAGE_CAP) return { nodes, complete: false };
+        if (read === PAGE_CAP) return { nodes, complete: false, dropped };
         const fetched = await next(page.pageInfo.endCursor);
-        if (!fetched) return { nodes, complete: false };
-        nodes.push(...present(fetched.nodes));
+        if (!fetched) return { nodes, complete: false, dropped };
+        take(fetched);
         page = fetched;
     }
-    return { nodes, complete: true };
+    return { nodes, complete: true, dropped };
 }
 
 const variablesOf = (pr: PrRoute) => ({ owner: pr.owner, name: pr.repo, number: pr.number });
@@ -98,6 +112,7 @@ export async function loadPullRequest(client: GitHubClient, route: PrRoute): Pro
         timeline: timeline.nodes,
         threads: threads.nodes,
         complete: timeline.complete && threads.complete,
+        withheld: timeline.dropped,
     };
 }
 
@@ -109,8 +124,43 @@ export async function loadPullRequestCommits(client: GitHubClient, route: PrRout
     };
     const first = await read(null);
     if (!first) throw new PullRequestNotFound(route);
-    const { nodes } = await collectPages(first, read);
+    const { nodes, dropped } = await collectPages(first, read);
+    // GraphQL hides commits from a token without Contents read access; REST needs only Pull requests read.
+    if (dropped) return loadPullRequestCommitsByRest(client, route, first.totalCount);
     return { commits: nodes.map((node) => node.commit), totalCount: first.totalCount };
+}
+
+type RestPullCommit = Endpoints["GET /repos/{owner}/{repo}/pulls/{pull_number}/commits"]["response"]["data"][number];
+
+/** A commit from REST in the shape GraphQL gives it. */
+export function restPullCommit(commit: RestPullCommit): PullCommit {
+    return {
+        oid: commit.sha,
+        abbreviatedOid: commit.sha.slice(0, 7),
+        messageHeadline: commit.commit.message.split("\n", 1)[0] ?? "",
+        committedDate: commit.commit.committer?.date ?? commit.commit.author?.date ?? "",
+        url: commit.html_url,
+        author: {
+            name: commit.commit.author?.name ?? null,
+            avatarUrl: commit.author?.avatar_url ?? "",
+            user: commit.author ? { login: commit.author.login } : null,
+        },
+    };
+}
+
+/** The PR's commits over REST, which GitHub stops at 250. */
+async function loadPullRequestCommitsByRest(
+    client: GitHubClient,
+    route: PrRoute,
+    totalCount: number,
+): Promise<PullRequestCommits> {
+    const commits = await client.paginate("GET /repos/{owner}/{repo}/pulls/{pull_number}/commits", {
+        owner: route.owner,
+        repo: route.repo,
+        pull_number: route.number,
+        per_page: 100,
+    });
+    return { commits: commits.map(restPullCommit), totalCount };
 }
 
 /** The open PR's live check: one point of the GraphQL budget per read. */

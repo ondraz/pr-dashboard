@@ -17,6 +17,8 @@ import type { PullRequestFields, ReviewThread, TimelineNode } from "../github/pu
 import { renderApp } from "../testApp.tsx";
 
 const API = "https://api.github.com";
+// The side panel quotes each open thread too; these tests are about the conversation's copy.
+const IN_CONVERSATION = { selector: ".conversation *" };
 const github = mockGraphql.link(`${API}/graphql`);
 const HEAD = "c0ffee00c0ffee";
 const EARLIER_HEAD = "a1a1a1a1a1a1";
@@ -199,8 +201,9 @@ describe("keyboard shortcuts", () => {
         ];
         nodes = [timeline.review("PRR_1", "bob", "COMMENTED")];
         open("/acme/widgets/pull/12");
-        await screen.findByText("Why 3?");
-        const summaryOf = (text: string) => screen.getByText(text).closest("details")?.querySelector("summary");
+        await screen.findByText("Why 3?", IN_CONVERSATION);
+        const summaryOf = (text: string) =>
+            screen.getByText(text, IN_CONVERSATION).closest("details")?.querySelector("summary");
 
         press("n");
         expect(document.activeElement).toBe(summaryOf("Why 3?"));
@@ -261,7 +264,7 @@ describe("the conversation's Unresolved filter", () => {
         expect(screen.queryByText("Looks close.")).toBeNull();
         expect(screen.queryByText("Fix the ratio")).toBeNull();
         expect(screen.queryByText("Typo")).toBeNull();
-        expect(screen.getByText("Why 3?")).toBeTruthy();
+        expect(screen.getByText("Why 3?", IN_CONVERSATION)).toBeTruthy();
         expect(screen.getByText("requested changes")).toBeTruthy();
 
         fireEvent.click(screen.getByRole("button", { name: "Everything" }));
@@ -290,7 +293,7 @@ describe("new since you last opened", () => {
 
     it("marks nothing on a first visit, and remembers the visit", async () => {
         open("/acme/widgets/pull/12");
-        await screen.findByText("Why 3?");
+        await screen.findByText("Why 3?", IN_CONVERSATION);
         expect(document.querySelectorAll(".new-tag")).toHaveLength(0);
         await waitFor(() => expect(lastOpened()).toEqual({ at: expect.any(String), head: HEAD }));
     });
@@ -301,12 +304,14 @@ describe("new since you last opened", () => {
             JSON.stringify({ "acme/widgets#12": { at: "2026-11-25T10:30:00Z", head: EARLIER_HEAD } }),
         );
         open("/acme/widgets/pull/12");
-        await screen.findByText("Why 3?");
+        await screen.findByText("Why 3?", IN_CONVERSATION);
         // bob's review and its comment came after 10:30; alice force-pushed at 12:00. bob's comment at 10:00 did not.
         expect(screen.getByText(/3 new entries since you last opened this pull request/)).toBeTruthy();
         const card = screen.getByText("Seen before.").closest(".timeline-card") as HTMLElement;
         expect(card.querySelector(".new-tag")).toBeNull();
-        expect(within(screen.getByText("Why 3?").closest("details") as HTMLElement).getByText("New")).toBeTruthy();
+        expect(
+            within(screen.getByText("Why 3?", IN_CONVERSATION).closest("details") as HTMLElement).getByText("New"),
+        ).toBeTruthy();
 
         await waitFor(() => expect(lastOpened().head).toBe(HEAD));
         expect(Date.parse(lastOpened().at)).toBeGreaterThan(Date.parse("2026-11-25T10:30:00Z"));

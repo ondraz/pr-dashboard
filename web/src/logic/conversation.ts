@@ -1,4 +1,8 @@
-import type { ReviewThreadDetailPageFragment, TimelinePageFragment } from "../github/gql/graphql.ts";
+import type {
+    PullCommitFieldsFragment,
+    ReviewThreadDetailPageFragment,
+    TimelinePageFragment,
+} from "../github/gql/graphql.ts";
 
 type TimelineNode = NonNullable<NonNullable<TimelinePageFragment["nodes"]>[number]>;
 type ReviewThread = NonNullable<NonNullable<ReviewThreadDetailPageFragment["nodes"]>[number]>;
@@ -106,6 +110,76 @@ export function buildConversation(
     if (orphans.length) items.push({ kind: "threads", threads: orphans });
     return items;
 }
+
+/** When a timeline entry happened: a commit by its commit date, a review when it was submitted. */
+function nodeDate(node: TimelineNode): string | null {
+    switch (node.__typename) {
+        case "PullRequestCommit":
+            return node.commit.committedDate;
+        case "PullRequestReview":
+            return node.submittedAt ?? node.createdAt;
+        default:
+            return "createdAt" in node && typeof node.createdAt === "string" ? node.createdAt : null;
+    }
+}
+
+/**
+ * The timeline with `commits` it lacks placed among its entries by commit date, for when GitHub left
+ * the commits out of it. GitHub orders them by when they were pushed, which the commit date stands in for.
+ */
+export function withCommits(
+    timeline: readonly TimelineNode[],
+    commits: readonly PullCommitFieldsFragment[],
+): TimelineNode[] {
+    const shown = new Set(
+        timeline.flatMap((node) => (node.__typename === "PullRequestCommit" ? [node.commit.oid] : [])),
+    );
+    const missing = commits
+        .filter((commit) => !shown.has(commit.oid))
+        .map((commit): CommitNode => ({ __typename: "PullRequestCommit", id: `commit-${commit.oid}`, commit }))
+        .sort((a, b) => Date.parse(a.commit.committedDate) - Date.parse(b.commit.committedDate));
+    if (!missing.length) return [...timeline];
+    const merged: TimelineNode[] = [];
+    let next = 0;
+    for (const node of timeline) {
+        const at = nodeDate(node);
+        while (at && next < missing.length && Date.parse(missing[next]?.commit.committedDate ?? "") <= Date.parse(at)) {
+            merged.push(missing[next++] as CommitNode);
+        }
+        merged.push(node);
+    }
+    merged.push(...missing.slice(next));
+    return merged;
+}
+
+/** Threads someone still has to act on: neither resolved nor in the viewer's unsent review. */
+export function openThreads(threads: readonly ReviewThread[]): ReviewThread[] {
+    return threads.filter((thread) => !thread.isResolved && !isPendingThread(thread));
+}
+
+/** Where a thread sits within its file: `:12`, `:10-12`, or nothing for a comment on the whole file. */
+export function threadLines(thread: ReviewThread): string {
+    if (thread.subjectType === "FILE") return "";
+    const line = thread.line ?? thread.originalLine;
+    const start = thread.startLine ?? thread.originalStartLine;
+    return line ? `:${start && start !== line ? `${start}-` : ""}${line}` : "";
+}
+
+/** The first words of a comment as plain text, for a one-line list. */
+export function commentExcerpt(body: string, length = 140): string {
+    const text = body
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/<[^>]+>/g, "")
+        // Markdown's marks, but not the underscores inside names like agent_cli.py.
+        .replace(/^\s*(?:[>#]+|[-*+]|\d+\.)\s+/gm, "")
+        .replace(/\*\*|[*`]|(?<!\w)_+|_+(?!\w)/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    return text.length > length ? `${text.slice(0, length - 1).trimEnd()}…` : text;
+}
+
+/** The DOM id of a thread or a review in the Conversation tab, which the side panel jumps to. */
+export const conversationAnchor = (nodeId: string) => `conversation-${nodeId}`;
 
 /** The last lines of a thread's diff hunk, the part its comment is about, as GitHub shows them. */
 export function hunkTail(diffHunk: string, lines = 4): { text: string; kind: "add" | "del" | "context" }[] {

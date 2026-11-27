@@ -40,9 +40,6 @@ const fields = pullRequestFields({
     latestReviews: {
         nodes: [{ id: "PRR_1", state: "CHANGES_REQUESTED", submittedAt: "2026-11-25T11:00:00Z", author: actor("bob") }],
     },
-    assignees: { nodes: [{ id: "U_alice", ...actor("alice") }] },
-    labels: { nodes: [{ id: "L_backend", name: "backend" }] },
-    milestone: { title: "Gearbox v2", url: "https://github.com/acme/widgets/milestone/2" },
     closingIssuesReferences: {
         nodes: [
             {
@@ -331,18 +328,69 @@ describe("PR page", () => {
         expect(comment.textContent).toContain("carol commented");
     });
 
-    it("shows reviewers, assignees, labels, linked issues and the milestone in the sidebar", async () => {
+    it("shows what is unresolved, the checks, reviewers and linked issues in the sidebar", async () => {
         open("/acme/widgets/pull/12");
         await heading();
         const section = (name: string) => screen.getByRole("region", { name });
+        const sections = [...document.querySelectorAll(".pr-sidebar > section")].map((s) =>
+            s.getAttribute("aria-label"),
+        );
+        expect(sections.slice(0, 4)).toEqual(["Unresolved comments", "Checks", "Reviewers", "Linked issues"]);
+        for (const gone of ["Assignees", "Labels", "Milestone"])
+            expect(screen.queryByRole("region", { name: gone })).toBeNull();
         const reviewers = [...section("Reviewers").querySelectorAll("li")].map((row) => row.textContent);
         expect(reviewers).toEqual(["bobChanges requested", "daveAwaiting review"]);
-        expect(within(section("Assignees")).getByRole("link", { name: "alice" })).toBeTruthy();
-        expect(within(section("Labels")).getByText("backend")).toBeTruthy();
         expect(within(section("Linked issues")).getByRole("link", { name: "#7 Gears slip" }).getAttribute("href")).toBe(
             "https://github.com/acme/widgets/issues/7",
         );
-        expect(within(section("Milestone")).getByRole("link", { name: "Gearbox v2" })).toBeTruthy();
+
+        // Only the open thread: the resolved one is done.
+        const unresolved = section("Unresolved comments");
+        expect(unresolved.querySelector(".tab-count")?.textContent).toBe("1");
+        const rows = within(unresolved).getAllByRole("button");
+        expect(rows).toHaveLength(1);
+        const row = rows[0] as HTMLElement;
+        expect(row.querySelector(".unresolved-where code")?.textContent).toBe("gears.ts:12");
+        expect(row.querySelector(".unresolved-where code")?.getAttribute("title")).toBe("src/gears.ts");
+        expect(row.querySelector(".unresolved-text")?.textContent).toBe("bob Why 3?");
+        expect(row.querySelector(".unresolved-replies")?.textContent).toBe("1 reply");
+
+        // The checks that need someone come first, each with where it stands.
+        const checks = section("Checks");
+        await within(checks).findByText("CI / test");
+        expect(checks.querySelector(".sidebar-check-counts")?.textContent).toBe(
+            "1 failing, 1 pending, 2 successful, 1 skipped",
+        );
+        const checkRows = [...checks.querySelectorAll(".sidebar-check")].map((row) => [
+            row.querySelector(".merge-mark")?.textContent,
+            row.querySelector(".sidebar-check-name")?.textContent,
+            row.querySelector(".sidebar-check-state")?.textContent,
+        ]);
+        expect(checkRows.map(([mark]) => mark)).toEqual(["✕", "●", "✓", "✓", "–"]);
+        expect(checkRows[0]?.slice(1)).toEqual(["CI / test", "Failure"]);
+        expect(within(checks).getByRole("link", { name: "All checks" }).getAttribute("href")).toBe(
+            "/acme/widgets/pull/12/checks",
+        );
+    });
+
+    it("jumps from an unresolved comment in the sidebar to its thread in the conversation", async () => {
+        const { router } = open("/acme/widgets/pull/12/commits");
+        await heading();
+        const scrolled: Element[] = [];
+        Element.prototype.scrollIntoView = function (this: Element) {
+            scrolled.push(this);
+        };
+        const unresolved = screen.getByRole("region", { name: "Unresolved comments" });
+        fireEvent.click(within(unresolved).getByRole("button", { name: /gears\.ts:12/ }));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/acme/widgets/pull/12"));
+        const target = await waitFor(() => {
+            const found = document.getElementById("conversation-T_1");
+            if (!found || !scrolled.includes(found)) throw new Error("not revealed yet");
+            return found as HTMLDetailsElement;
+        });
+        expect(target.open).toBe(true);
+        expect(target.classList.contains("revealed")).toBe(true);
+        expect(document.activeElement).toBe(target.querySelector("summary"));
     });
 
     it("shows the stack the PR sits in, each member opening here", async () => {
@@ -427,6 +475,79 @@ describe("PR page", () => {
         document.dispatchEvent(new Event("visibilitychange"));
         await waitFor(() => expect(detailRequests).toBe(2));
         expect(probes).toBe(1);
+    });
+
+    it("reads the commits over REST when GitHub withholds them, and shows them in the conversation", async () => {
+        // A token without Contents read access: GitHub answers the commits with null and an error each.
+        const withheld = { type: "FORBIDDEN", message: "Resource not accessible by personal access token" };
+        const restCommit = (sha: string, message: string, date: string) => ({
+            sha,
+            html_url: `https://github.com/acme/widgets/commit/${sha}`,
+            author: { login: "alice", avatar_url: "https://avatars.example/alice" },
+            commit: { message, author: { name: "Alice", date }, committer: { name: "Alice", date } },
+        });
+        const restRequests: string[] = [];
+        server.use(
+            github.query("PullRequestDetail", () =>
+                HttpResponse.json({
+                    ...pullRequestResponse(
+                        fields,
+                        [
+                            timeline.reviewRequested("RR_1", "bob"),
+                            null,
+                            timeline.comment("IC_1", "carol", "<p>Looks close.</p>"),
+                            null,
+                        ] as never,
+                        [],
+                    ),
+                    errors: [withheld, withheld],
+                }),
+            ),
+            github.query("PullRequestCommits", () =>
+                HttpResponse.json({
+                    data: {
+                        repository: {
+                            pullRequest: {
+                                commits: {
+                                    totalCount: 2,
+                                    pageInfo: { hasNextPage: false, endCursor: null },
+                                    nodes: [null, null],
+                                },
+                            },
+                        },
+                    },
+                    errors: [withheld, withheld],
+                }),
+            ),
+            http.get(`${API}/repos/:owner/:repo/pulls/:number/commits`, ({ request }) => {
+                restRequests.push(new URL(request.url).pathname);
+                return HttpResponse.json([
+                    restCommit("aaaaaaa1111", "Cut the teeth\n\nSharper now.", "2026-11-25T09:00:00Z"),
+                    restCommit("bbbbbbb2222", "Oil the axle", "2026-11-26T09:00:00Z"),
+                ]);
+            }),
+        );
+        open("/acme/widgets/pull/12");
+        await heading();
+        const conversation = document.querySelector(".conversation") as HTMLElement;
+        await within(conversation).findByText("Oil the axle");
+        const events = [...conversation.querySelectorAll(".timeline-event")].map((event) =>
+            event.textContent?.replace(/\s+/g, " ").trim(),
+        );
+        expect(events).toEqual([
+            "alice requested a review from bob 2d ago",
+            "alice added a commit",
+            "alice added a commit",
+        ]);
+        expect([...conversation.querySelectorAll(".commit-headline")].map((row) => row.textContent)).toEqual([
+            "Cut the teeth",
+            "Oil the axle",
+        ]);
+        expect(restRequests).toEqual(["/repos/acme/widgets/pulls/12/commits"]);
+
+        fireEvent.click(screen.getByRole("link", { name: /Commits/ }));
+        await screen.findAllByText(/Commits on/);
+        expect(document.querySelectorAll(".commits-tab .commit-row")).toHaveLength(2);
     });
 
     it("lists the commits by day", async () => {

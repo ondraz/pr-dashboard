@@ -421,22 +421,6 @@ export const pullRequestDetailQuery = graphql(`
                         }
                     }
                 }
-                assignees(first: 20) {
-                    nodes {
-                        id
-                        ...ActorFields
-                    }
-                }
-                labels(first: 50) {
-                    nodes {
-                        id
-                        name
-                    }
-                }
-                milestone {
-                    title
-                    url
-                }
                 closingIssuesReferences(first: 20) {
                     nodes {
                         number

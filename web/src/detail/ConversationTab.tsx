@@ -9,10 +9,12 @@ import {
     buildConversation,
     type CommitNode,
     type ConversationItem,
+    conversationAnchor,
     type EventNode,
     itemMoments,
     type ReviewNode,
     unresolvedOnly,
+    withCommits,
 } from "../logic/conversation.ts";
 import { labelColor } from "../logic/labels.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
@@ -24,6 +26,7 @@ import { NewTag, useIsNew } from "./NewTag.tsx";
 import { PrComment } from "./PrComment.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 import { stepThread, Thread, When, Who } from "./Thread.tsx";
+import { usePullRequestCommits } from "./usePullRequest.ts";
 
 function Card({ header, children }: { header: ReactNode; children: ReactNode }) {
     return (
@@ -44,7 +47,7 @@ function Review({ review, threads }: { review: ReviewNode; threads: ReviewThread
     const verb = REVIEW_VERB[review.state] ?? "reviewed";
     const at = review.submittedAt ?? review.createdAt;
     return (
-        <div className={`timeline-review review-${review.state.toLowerCase()}`}>
+        <div id={conversationAnchor(review.id)} className={`timeline-review review-${review.state.toLowerCase()}`}>
             <div className="timeline-event">
                 <Who actor={review.author} /> {verb} <When at={at} href={review.url} />
                 <NewTag at={at} author={review.author?.login} />
@@ -245,7 +248,12 @@ function NewSince({ items }: { items: readonly ConversationItem[] }) {
 export function ConversationTab() {
     const { route, detail } = useOpenPr();
     const { pr, timeline, threads, complete } = detail;
-    const items = useMemo(() => buildConversation(timeline, threads), [timeline, threads]);
+    // GitHub left entries out of the timeline: commits, for a token that cannot read the repository's contents.
+    const commits = usePullRequestCommits(route, detail.withheld > 0).data?.commits;
+    const items = useMemo(
+        () => buildConversation(commits ? withCommits(timeline, commits) : timeline, threads),
+        [timeline, commits, threads],
+    );
     const summary = useMemo(() => prUnresolvedSummary(threads, pr.reviews?.nodes ?? []), [threads, pr.reviews]);
     const [shown, setShown] = useState<Shown>("all");
     const visible = useMemo(
