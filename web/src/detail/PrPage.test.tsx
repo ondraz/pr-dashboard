@@ -743,14 +743,20 @@ describe("PR page", () => {
                 ["Gear spike", "made this PR · 7d ago · archived"],
                 ["Axle work", "in acme/widgets · 1h ago"],
             ]);
-            const send = within(panel).getByRole("link", { name: "Send to Gear work in Claude" });
-            expect(send.getAttribute("href")).toBe(
-                `claude://claude.ai/epitaxy/${madeSession.id}?q=${encodeURIComponent(prompt.value)}`,
-            );
-            fireEvent.click(send);
+            // The desktop app opens a session without a prompt, so it is copied, with a word to paste it.
+            const copyAndOpen = within(panel).getByRole("link", {
+                name: "Copy the prompt and open Gear work in Claude",
+            });
+            expect(copyAndOpen.textContent).toBe("Copy & open");
+            expect(copyAndOpen.getAttribute("href")).toBe(`claude://claude.ai/epitaxy/${madeSession.id}`);
+            fireEvent.click(copyAndOpen);
             expect(writeText).toHaveBeenCalledWith(prompt.value);
-            expect(await within(panel).findByText("Prompt copied")).toBeTruthy();
-            expect(within(panel).getByRole("link", { name: "Send to Axle work in Claude" })).toBeTruthy();
+            expect(
+                await within(panel).findByText("Prompt copied: paste it into the session's box and press Enter."),
+            ).toBeTruthy();
+            expect(
+                within(panel).getByRole("link", { name: "Copy the prompt and open Axle work in Claude" }),
+            ).toBeTruthy();
 
             // A new desktop session opens in the repository's checkout.
             const fresh = new URL(

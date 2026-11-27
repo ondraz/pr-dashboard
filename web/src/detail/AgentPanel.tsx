@@ -109,7 +109,16 @@ function sessionTargets(task: AgentTask, context: PrListContext, prompt: string,
     return targets;
 }
 
-function SessionTargets({ targets, repo, onOpen }: { targets: Target[]; repo: string; onOpen: () => void }) {
+function SessionTargets({
+    targets,
+    repo,
+    onOpen,
+}: {
+    targets: Target[];
+    repo: string;
+    /** `carried`: the link hands the session the prompt; otherwise it has to be pasted. */
+    onOpen: (carried: boolean) => void;
+}) {
     if (!targets.length) return <p className="muted">No Claude session on this computer has worked in {repo}.</p>;
     return (
         <ul className="agent-sessions">
@@ -130,10 +139,14 @@ function SessionTargets({ targets, repo, onOpen }: { targets: Target[]; repo: st
                             className="step-btn agent-link"
                             href={link.href}
                             title={link.title}
-                            aria-label={`Send to ${title} in ${link.app}`}
-                            onClick={onOpen}
+                            aria-label={
+                                link.carriesPrompt
+                                    ? `Send to ${title} in ${link.app}`
+                                    : `Copy the prompt and open ${title} in ${link.app}`
+                            }
+                            onClick={() => onOpen(link.carriesPrompt)}
                         >
-                            Send
+                            {link.carriesPrompt ? "Send" : "Copy & open"}
                         </a>
                     </li>
                 );
@@ -153,11 +166,12 @@ export function AgentPanel({ task, onClose }: { task: AgentTask; onClose: () => 
     const repo = `${route.owner}/${route.repo}`;
     const folder = context.repo?.folder ?? null;
     const { prompt, error, failing, threads } = usePrompt(task);
-    const [copied, setCopied] = useState<"copied" | "failed" | null>(null);
-    const copy = () => {
+    const [copied, setCopied] = useState<"copied" | "paste" | "failed" | null>(null);
+    // `paste`: the session opens without the prompt, so the reader is told to paste it there.
+    const copy = (paste = false) => {
         if (!prompt) return;
         navigator.clipboard.writeText(prompt).then(
-            () => setCopied("copied"),
+            () => setCopied(paste ? "paste" : "copied"),
             () => setCopied("failed"),
         );
     };
@@ -205,7 +219,7 @@ export function AgentPanel({ task, onClose }: { task: AgentTask; onClose: () => 
                                                     : "Starts a desktop session; the app asks for its folder"
                                                 : "Starts a session in the open VS Code window"
                                         }
-                                        onOpen={copy}
+                                        onOpen={() => copy()}
                                     />
                                 ))}
                             </div>
@@ -224,20 +238,26 @@ export function AgentPanel({ task, onClose }: { task: AgentTask; onClose: () => 
                             <SessionTargets
                                 targets={sessionTargets(task, context, prompt, repo)}
                                 repo={repo}
-                                onOpen={copy}
+                                onOpen={(carried) => copy(!carried)}
                             />
                         </div>
                     </div>
                     <p className="muted">
-                        Each link hands the session the prompt and copies it too; if a session's box stays empty, paste
-                        it there.
+                        New sessions and VS Code sessions open with the prompt in their box. The desktop app opens an
+                        existing session without it, so <strong>Copy &amp; open</strong> copies it for you to paste
+                        there.
                     </p>
                     <div className="composer-actions">
                         {copied === "copied" && <span className="muted">Prompt copied</span>}
+                        {copied === "paste" && (
+                            <span className="agent-paste">
+                                Prompt copied: paste it into the session's box and press Enter.
+                            </span>
+                        )}
                         {copied === "failed" && (
                             <span className="error-text">Could not copy; select the prompt and copy it.</span>
                         )}
-                        <button type="button" className="primary-btn" onClick={copy}>
+                        <button type="button" className="primary-btn" onClick={() => copy()}>
                             Copy prompt
                         </button>
                     </div>

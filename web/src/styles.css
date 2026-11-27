@@ -3065,3 +3065,8 @@ a.primary-btn:hover,
     color: var(--color-btn-text);
     text-decoration: none;
 }
+.agent-paste {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-session-accent);
+}

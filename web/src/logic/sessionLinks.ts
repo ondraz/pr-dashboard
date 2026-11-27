@@ -44,9 +44,9 @@ export const LINK_PROMPT_LIMIT = 8000;
 const fits = (prompt: string) => prompt.length > 0 && prompt.length <= LINK_PROMPT_LIMIT;
 
 /**
- * Opens `session` with `prompt`. VS Code's link takes it and puts it in the session's box. The desktop
- * app passes a session link's `q` on to the session page, whose prompt box reads `q` the way the new
- * session page does; that is not confirmed for an open session, so the panel copies the prompt as well.
+ * Opens `session` for `prompt`. VS Code's link takes the prompt and puts it in the session's box. The
+ * desktop app's link to a session opens it but ignores a prompt (tried: `?q=` leaves the box empty), so
+ * there it has to be pasted.
  */
 export function resumeLink(
     session: PrSession,
@@ -55,9 +55,10 @@ export function resumeLink(
 ): (SessionLink & { carriesPrompt: boolean }) | null {
     const link = sessionLink(session, role);
     if (!link) return null;
-    if (!fits(prompt)) return { ...link, carriesPrompt: false };
-    const query = link.app === "VS Code" ? `&prompt=${encodeURIComponent(prompt)}` : `?q=${encodeURIComponent(prompt)}`;
-    return { ...link, href: `${link.href}${query}`, carriesPrompt: true };
+    if (link.app === "VS Code" && fits(prompt)) {
+        return { ...link, href: `${link.href}&prompt=${encodeURIComponent(prompt)}`, carriesPrompt: true };
+    }
+    return { ...link, carriesPrompt: false };
 }
 
 /**

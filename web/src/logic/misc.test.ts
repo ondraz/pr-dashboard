@@ -76,14 +76,15 @@ describe("prompt links", () => {
     };
     const cli: PrSession = { ...desktop, id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", kind: "cli" };
 
-    it("hands either app's session the prompt in its link", () => {
+    it("hands VS Code's session the prompt in its link, and leaves the desktop app's to the clipboard", () => {
         expect(resumeLink(cli, "made", "Fix #12 & push")).toMatchObject({
             href: "vscode://anthropic.claude-code/open?session=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa&prompt=Fix%20%2312%20%26%20push",
             carriesPrompt: true,
         });
+        // The desktop app opens a session from its link but ignores a prompt in it.
         expect(resumeLink(desktop, "made", "Fix #12")).toMatchObject({
-            href: "claude://claude.ai/epitaxy/local_11111111-1111-4111-8111-111111111111?q=Fix%20%2312",
-            carriesPrompt: true,
+            href: "claude://claude.ai/epitaxy/local_11111111-1111-4111-8111-111111111111",
+            carriesPrompt: false,
         });
         expect(resumeLink({ ...desktop, id: "local_x;y" }, "made", "Fix")).toBeNull();
     });

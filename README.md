@@ -421,10 +421,10 @@ leaves them to the session, which reads them with `gh pr checks`.
   box. The desktop session opens in your checkout of the PR's repository, the one your most recent
   desktop session there worked in; without one the app asks for a folder.
 - **An existing session**: the three most recent that made the PR (for a fix) or reviewed it (for a
-  review), then the five most recent other desktop sessions in the PR's repository. **Send** opens a
-  desktop session with the prompt in its link (`claude://claude.ai/epitaxy/<id>?q=<prompt>`), and a
-  VS Code session with it in its box. Whether the desktop app puts it in an open session's box is not
-  confirmed, so if the box stays empty, paste it.
+  review), then the five most recent other desktop sessions in the PR's repository. The desktop app
+  opens a session from its link (`claude://claude.ai/epitaxy/<id>`) but ignores a prompt in it, so
+  **Copy & open** copies the prompt and opens the session for you to paste it into its box. A VS Code
+  session's **Send** opens it with the prompt in its box.
 - A prompt longer than 8,000 characters stays out of every link, to be pasted.
 
 The server finds a desktop session's repository from the `.git` directory the app records for it,
