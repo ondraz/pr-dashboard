@@ -2999,3 +2999,31 @@ kbd {
         overscroll-behavior: contain;
     }
 }
+
+/* An open thread in the side panel: the tick that resolves it, then the jump to it. */
+.unresolved-list li.unresolved-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+}
+.unresolved-row .unresolved-item {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    padding: 4px 6px;
+    box-sizing: border-box;
+}
+.resolve-tick {
+    margin: 7px 0 0;
+    accent-color: var(--color-open);
+    cursor: pointer;
+}
+.resolve-tick:disabled {
+    cursor: not-allowed;
+}
+.resolve-error {
+    flex-basis: 100%;
+    font-size: 12px;
+}

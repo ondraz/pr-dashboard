@@ -120,7 +120,7 @@ within 90 days.
   [Fix and review with Claude](#fix-and-review-with-claude))
 - The side panel, which stays in view while the conversation scrolls: **Unresolved comments**, each
   open thread by file and line with the start of its first comment, a click away from its place in
-  the conversation (and Copilot's verdict when it counts on its own); **Checks** on the head commit,
+  the conversation, with a tick that resolves it (and Copilot's verdict when it counts on its own); **Checks** on the head commit,
   failing and running ones first, the rest folded when there are many; reviewers and where each one's
   review stands; the issues the PR closes; the **Stack** the PR sits in (anyone's PRs below it down to
   the base branch and on top of it, each opening here); and **Sessions**: every Claude session that
