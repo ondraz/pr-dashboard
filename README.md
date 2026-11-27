@@ -101,6 +101,9 @@ one in the list as its tab, filters and grouping currently show it.
   check links to its own page (**Details**). A failing check opens with its summary and its
   annotations, each linking to its file and lines; the others fold them away. The tab counts the
   checks, in red while one fails
+- **Fix with Claude** and **Review with Claude**, beside the tabs of an open PR, hand a prompt built
+  from the failing checks and the unresolved threads to a Claude session (see
+  [Fix and review with Claude](#fix-and-review-with-claude))
 - The sidebar: reviewers and where each one's review stands, assignees, labels, the issues the PR
   closes, the milestone, the **Stack** the PR sits in (anyone's PRs below it down to the base
   branch and on top of it, each opening here), and **Sessions**: every Claude session that made
@@ -359,6 +362,32 @@ reviewed it, the most recently active first. It reads two places:
 Your own PRs show the latest session that made them; the two review tabs show the latest session
 that reviewed them. A PR's page lists them all.
 
+### Fix and review with Claude
+
+On an open PR's page, **Fix with Claude** and **Review with Claude** beside the tabs write a prompt
+for a Claude Code session and hand it over. Nothing is sent to GitHub, and no session is started
+without you: each step is a link you click.
+
+- **Fix with Claude** names the PR and its branches, then lists each failing check on the head
+  commit with its title, its summary, its failure and warning annotations (file, lines and
+  message), and the command that prints its log (`gh run view --job <id> --log-failed`) or the
+  link to its page; then each unresolved review thread with its file, lines, link and every
+  comment, and Copilot's verdict when it asks for changes without inline comments. It asks for the
+  checks to pass and the threads to be addressed, on the PR's branch.
+- **Review with Claude** asks for a review of the PR: where your last review left off, when you
+  reviewed an earlier commit; the failing checks by name; and the unresolved threads, to check
+  whether they were addressed.
+
+The prompt shows in full before it goes anywhere. **Copy prompt** copies it, and every link copies
+it as well:
+
+- **The session that made the PR** (for a fix) or **reviewed it** (for a review), the three most
+  recent: a desktop session opens with its usual link, so paste the prompt into it; a VS Code
+  session opens with the prompt already in its box.
+- **A new session**, in the desktop app (`claude://code/new?q=<prompt>`) or in VS Code
+  (`vscode://anthropic.claude-code/open?prompt=<prompt>`), which opens with the prompt in its box.
+  A prompt longer than 8,000 characters stays out of every link, to be pasted.
+
 The list is read on every refresh and only answered to a loopback Host (`localhost`,
 `127.0.0.1` or `[::1]`), with no CORS header, so other sites cannot read it. Served any other
 way (a plain static server) the request fails quietly and the button is simply absent.
@@ -407,7 +436,8 @@ point every 15 seconds, so about 480 points an hour with the list's.
 
 The Checks tab reads the head commit's checks with one GraphQL query per 50 of them (up to 500),
 with each check's first 50 annotations, read again with the PR; the Files changed tab shares that read
-for its annotations whenever its diff ends at the head commit.
+for its annotations whenever its diff ends at the head commit, and **Fix with Claude** and **Review
+with Claude** share it for their prompts.
 
 The Files changed tab reads which files you viewed with one more GraphQL query per 100 files, read
 again with the PR. A review action is one write (two for the first comment of a review, which opens
