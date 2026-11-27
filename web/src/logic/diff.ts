@@ -207,3 +207,105 @@ export function filterFiles(files: readonly ChangedFile[], query: string): Chang
 export function fileAnchor(path: string): string {
     return `diff-${encodeURIComponent(path)}`;
 }
+
+/** Which changes the Files changed tab shows: the whole PR, one commit, or the commits after one up to another. */
+export type DiffSpec = { kind: "all" } | { kind: "commit"; sha: string } | { kind: "range"; from: string; to: string };
+
+const SHA = /^[0-9a-f]{7,40}$/i;
+
+export type PartialDiffSpec = Exclude<DiffSpec, { kind: "all" }>;
+
+/** The `<sha>` or `<from>..<to>` after `/files/`, as GitHub writes a commit or a range of commits there. */
+export function parseDiffRange(param: string): PartialDiffSpec | null {
+    const [from, to, ...rest] = param.split("..");
+    if (rest.length || !from || !SHA.test(from)) return null;
+    if (to === undefined) return { kind: "commit", sha: from.toLowerCase() };
+    return SHA.test(to) ? { kind: "range", from: from.toLowerCase(), to: to.toLowerCase() } : null;
+}
+
+export function parseCommitSha(param: string): string | null {
+    return SHA.test(param) ? param.toLowerCase() : null;
+}
+
+export function diffRangeParam(spec: PartialDiffSpec): string {
+    return spec.kind === "commit" ? spec.sha : `${spec.from}..${spec.to}`;
+}
+
+/** The commit the diff's new side is at, whose files fill in the context around the hunks. */
+export function diffHead(spec: DiffSpec, prHead: string): string {
+    if (spec.kind === "commit") return spec.sha;
+    if (spec.kind === "range") return spec.to;
+    return prHead;
+}
+
+/** The commits `from` exclusive to `to` inclusive, in the PR's order; the PR's own base stands before its first. */
+export function rangeOf(commits: readonly string[], first: number, last: number, base: string): PartialDiffSpec | null {
+    const to = commits[last];
+    if (to === undefined || first < 0 || first > last) return null;
+    if (first === last) return { kind: "commit", sha: to };
+    return { kind: "range", from: first === 0 ? base : (commits[first - 1] as string), to };
+}
+
+/** The changes since the commit the viewer last reviewed, or null when they have not reviewed. */
+export function sinceReview(reviewedOid: string | null | undefined, headOid: string): PartialDiffSpec | null {
+    return reviewedOid ? { kind: "range", from: reviewedOid, to: headOid } : null;
+}
+
+/** Whether a file's surroundings can be read from the file at the head commit; an added or deleted file has none. */
+export function canExpandContext(file: ChangedFile): boolean {
+    return file.status !== "added" && file.status !== "removed";
+}
+
+/** The fields of a review thread that say where it sits in the diff. */
+export interface ThreadAnchor {
+    path: string;
+    line: number | null;
+    diffSide: "LEFT" | "RIGHT";
+    subjectType: "LINE" | "FILE";
+    isOutdated: boolean;
+}
+
+export interface FileThreads<T> {
+    /** Threads on the file as a whole, shown above its diff. */
+    file: T[];
+    /** Line threads by the line they end on, on each side of the diff. */
+    old: Record<string, T[]>;
+    new: Record<string, T[]>;
+    count: number;
+}
+
+export interface PlacedThreads<T> {
+    byPath: Map<string, FileThreads<T>>;
+    /** Outdated threads and threads on files this diff does not show, listed apart from the diff. */
+    apart: T[];
+}
+
+/** Puts each review thread at its file and line in the PR's whole diff, and everything else apart. */
+export function placeThreads<T extends ThreadAnchor>(
+    threads: readonly T[],
+    paths: ReadonlySet<string>,
+): PlacedThreads<T> {
+    const byPath = new Map<string, FileThreads<T>>();
+    const apart: T[] = [];
+    for (const thread of threads) {
+        const onLine = thread.subjectType === "LINE";
+        if (thread.isOutdated || !paths.has(thread.path) || (onLine && thread.line === null)) {
+            apart.push(thread);
+            continue;
+        }
+        let placed = byPath.get(thread.path);
+        if (!placed) {
+            placed = { file: [], old: {}, new: {}, count: 0 };
+            byPath.set(thread.path, placed);
+        }
+        placed.count++;
+        if (!onLine) {
+            placed.file.push(thread);
+            continue;
+        }
+        const side = thread.diffSide === "LEFT" ? placed.old : placed.new;
+        const key = String(thread.line);
+        side[key] = [...(side[key] ?? []), thread];
+    }
+    return { byPath, apart };
+}

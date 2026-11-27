@@ -67,7 +67,10 @@ export function PrPage() {
     usePullRequestLiveCheck(route, data, isFetching);
     const open = useMemo(() => (data ? { route, detail: data } : null), [route, data]);
     // The diff takes the whole width, as on GitHub.
-    const wide = !!useMatchRoute()({ to: "/$owner/$repo/pull/$number/files", fuzzy: true });
+    const matchRoute = useMatchRoute();
+    const wide =
+        !!matchRoute({ to: "/$owner/$repo/pull/$number/files", fuzzy: true }) ||
+        !!matchRoute({ to: "/$owner/$repo/pull/$number/commits/$sha" });
     // The commits and the stack are read again with the PR.
     const refresh = () => void queryClient.invalidateQueries({ queryKey: prQueryKey(github?.id, route) });
 

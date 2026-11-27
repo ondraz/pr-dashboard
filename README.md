@@ -67,7 +67,7 @@ one in the list as its tab, filters and grouping currently show it.
   decision, the checks on the head commit counted by outcome, whether the branch merges cleanly
   (conflicts, out of date, blocked by the base branch's rules, still being worked out), and
   auto-merge or the PR's place in the merge queue
-- **Commits**: the PR's commits, by day
+- **Commits**: the PR's commits, by day, each opening its own diff
 - **Files changed**: the diff, full width, with the changed files as a tree beside it. Typing in the
   tree's filter narrows the tree and the diffs to the paths that contain every word typed. Each
   file shows its path (both paths for a rename), whether it was added, deleted or renamed, its
@@ -78,8 +78,20 @@ one in the list as its tab, filters and grouping currently show it.
   empty file say so instead of showing hunks. A file with more than 400 changed lines waits for
   **Load diff**. When GitHub leaves a file's patch out of its file list, or cuts it short, the file's
   hunks come from the PR's raw diff instead; when GitHub will not send that either, the file links to
-  the diff on GitHub
-- **Checks** opens on GitHub for now, as does a single commit's diff
+  the diff on GitHub.
+  **Load context** reads the file at the diff's last commit, after which the lines between and around
+  the hunks unfold from each hunk's edge, or all at once with **Show the whole file**. Each review
+  thread sits under the line it was left on, on its side of the diff, with every reply; a thread on a
+  whole file sits above it, and the file's header counts them. Outdated threads, and threads on files
+  the PR no longer changes, are listed above the diff with the code they were left on.
+  The menu above the diff picks what it shows: all changes; the changes since the commit your last
+  review was on (`.../files/<reviewed>..<head>`); one commit (`.../files/<sha>`, or
+  `.../commits/<sha>` as the Commits tab links it, with its message and steps to the commits either
+  side); or a range of commits, from one to another (`.../files/<before>..<last>`, as GitHub writes
+  it). These use the same paths as GitHub. When the commit you reviewed is no longer in the branch's
+  history, as after a force-push, the diff says that it starts where the two histories meet. Review
+  threads show only on all changes, since their lines belong to that diff
+- **Checks** opens on GitHub for now
 - The sidebar: reviewers and where each one's review stands, assignees, labels, the issues the PR
   closes, the milestone, the **Stack** the PR sits in (anyone's PRs below it down to the base
   branch and on top of it, each opening here), and **Sessions**: every Claude session that made
@@ -230,7 +242,8 @@ make dev            # the same server in the foreground, with Vite for hot reloa
 
 The server binds to `127.0.0.1` and serves the built app, `/sessions.json` and the sign-in routes
 under `/auth/`. A path without a
-file name gets the app's page, so a link into the app survives a reload; any other path that is
+file name, or ending in a range of commits (`<sha>..<sha>`), gets the app's page, so a link into the
+app survives a reload; any other path that is
 not a file of the build is a 404. The page comes with a strict Content Security Policy: only the
 bundle's own scripts and styles run, it connects only to the server and `api.github.com`, and it
 shows images only from GitHub. The one exception is the handful of fixed inline styles the diff
@@ -301,7 +314,10 @@ Opening a PR costs one GraphQL query for its header, sidebar, merge box, descrip
 and review threads, and one more per further 100 timeline events or threads (up to 1,000 of
 each). The Commits tab is one more query per 100 commits. The Files changed tab is one REST read
 per 100 changed files (GitHub lists up to 3,000), read again with the PR, plus the PR's raw diff once
-per head commit when some file's patch is missing or cut. The Stack panel costs a REST read of the
+per head commit when some file's patch is missing or cut. A single commit's diff is one REST read
+per 300 files and a range one comparison (GitHub lists up to 300 of its files); neither is read again
+once loaded. The menu above the diff reads the commit list as the Commits tab does, sharing it.
+**Load context** is one read of the file, once per file and commit. The Stack panel costs a REST read of the
 PR, one lookup per PR below it and one per level above it, at most 5 each way; with ETags these
 cost nothing once unchanged. In live mode an open PR adds its own change check, one more point
 every 15 seconds, so about 480 points an hour with the list's.

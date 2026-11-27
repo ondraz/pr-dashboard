@@ -88,9 +88,12 @@ function serveBuild(app: Hono, webRoot: string): void {
     });
 }
 
+// GitHub's range of commits in a PR's diff, `.../files/<from>..<to>`, is the one route with a dot.
+const COMMIT_RANGE = /\/[0-9a-f]{7,40}\.\.[0-9a-f]{7,40}$/i;
+
 /** A path the page's router may own: not a file (no dot in its last segment), not under assets/. */
 export function isAppRoute(path: string): boolean {
-    return !path.startsWith("/assets/") && !/\.[^/]*$/.test(path);
+    return !path.startsWith("/assets/") && (!/\.[^/]*$/.test(path) || COMMIT_RANGE.test(path));
 }
 
 export function createHttpServer(app: Hono): Server {

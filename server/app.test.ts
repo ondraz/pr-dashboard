@@ -75,17 +75,21 @@ describe("createApp", () => {
         );
     });
 
-    it.each(["/", "/index.html", "/acme/widgets/pull/12", "/acme/widgets/pull/12/files", "/acme/web.site/pull/3"])(
-        "serves the app with its CSP at %s",
-        async (path) => {
-            const res = await get(path);
-            expect(res.status).toBe(200);
-            expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
-            expect(res.headers.get("Cache-Control")).toBe("no-cache");
-            expect(res.headers.get("Content-Security-Policy")).toBe(CONTENT_SECURITY_POLICY);
-            expect(await res.text()).toMatch(/^<!doctype html>/i);
-        },
-    );
+    it.each([
+        "/",
+        "/index.html",
+        "/acme/widgets/pull/12",
+        "/acme/widgets/pull/12/files",
+        "/acme/widgets/pull/12/files/aaaaaaa..bbbbbbb",
+        "/acme/web.site/pull/3",
+    ])("serves the app with its CSP at %s", async (path) => {
+        const res = await get(path);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+        expect(res.headers.get("Cache-Control")).toBe("no-cache");
+        expect(res.headers.get("Content-Security-Policy")).toBe(CONTENT_SECURITY_POLICY);
+        expect(await res.text()).toMatch(/^<!doctype html>/i);
+    });
 
     it("allows no inline style but the diff view's own, each by its hash", () => {
         const styleSrc = CONTENT_SECURITY_POLICY.split("; ").find((directive) => directive.startsWith("style-src "));
@@ -164,8 +168,19 @@ describe("createApp", () => {
 
 describe("isAppRoute", () => {
     it("takes paths without a file name", () => {
-        expect(["/", "/acme/widgets/pull/1/commits/abc123", "/acme/next.js/pull/1"].every(isAppRoute)).toBe(true);
-        expect(["/favicon.ico", "/assets/x", "/robots.txt"].some(isAppRoute)).toBe(false);
+        expect(
+            [
+                "/",
+                "/acme/widgets/pull/1/commits/abc123",
+                "/acme/next.js/pull/1",
+                "/acme/widgets/pull/1/files/aaaaaaa..bbbbbbb",
+            ].every(isAppRoute),
+        ).toBe(true);
+        expect(
+            ["/favicon.ico", "/assets/x", "/robots.txt", "/a..b", "/acme/widgets/pull/1/files/aaaaaaa...bbbbbbb"].some(
+                isAppRoute,
+            ),
+        ).toBe(false);
     });
 });
 

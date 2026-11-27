@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
     buildFileTree,
     type ChangedFile,
+    canExpandContext,
+    diffHead,
+    diffRangeParam,
     fileAnchor,
     filterFiles,
     isLargeDiff,
     needsRawDiff,
+    parseCommitSha,
+    parseDiffRange,
     patchIsComplete,
+    placeThreads,
+    rangeOf,
     rawSectionOf,
+    sinceReview,
     splitRawDiff,
     treeOrder,
     unifiedDiffText,
@@ -188,5 +196,95 @@ describe("fileAnchor", () => {
     it("gives every path its own id", () => {
         expect(fileAnchor("a b/c.ts")).toBe("diff-a%20b%2Fc.ts");
         expect(fileAnchor("ab/c.ts")).not.toBe(fileAnchor("a/bc.ts"));
+    });
+});
+
+describe("diff specs", () => {
+    const A = "aaaaaaa1111";
+    const B = "bbbbbbb2222";
+
+    it("reads a commit or a range of commits from the path, as GitHub writes them", () => {
+        expect(parseDiffRange("AAAAAAA1111")).toEqual({ kind: "commit", sha: A });
+        expect(parseDiffRange(`${A}..${B}`)).toEqual({ kind: "range", from: A, to: B });
+        for (const bad of ["", "abc", "zzzzzzz", `${A}..`, `${A}..${B}..${A}`, `${A}...${B}`, "../etc"]) {
+            expect(parseDiffRange(bad)).toBeNull();
+        }
+        expect(parseCommitSha(B)).toBe(B);
+        expect(parseCommitSha("main")).toBeNull();
+    });
+
+    it("writes a spec back as its path", () => {
+        expect(diffRangeParam({ kind: "commit", sha: A })).toBe(A);
+        expect(diffRangeParam({ kind: "range", from: A, to: B })).toBe(`${A}..${B}`);
+    });
+
+    it("reads a file's surroundings at the commit the diff ends on", () => {
+        expect(diffHead({ kind: "all" }, "head")).toBe("head");
+        expect(diffHead({ kind: "commit", sha: A }, "head")).toBe(A);
+        expect(diffHead({ kind: "range", from: A, to: B }, "head")).toBe(B);
+    });
+
+    it("turns a run of commits into the range after the one before it, or the base for the first", () => {
+        const commits = ["c1", "c2", "c3"];
+        expect(rangeOf(commits, 0, 2, "base")).toEqual({ kind: "range", from: "base", to: "c3" });
+        expect(rangeOf(commits, 1, 2, "base")).toEqual({ kind: "range", from: "c1", to: "c3" });
+        expect(rangeOf(commits, 1, 1, "base")).toEqual({ kind: "commit", sha: "c2" });
+        expect(rangeOf(commits, 2, 1, "base")).toBeNull();
+        expect(rangeOf(commits, 0, 5, "base")).toBeNull();
+    });
+
+    it("compares from the commit last reviewed, when there was a review", () => {
+        expect(sinceReview(A, B)).toEqual({ kind: "range", from: A, to: B });
+        expect(sinceReview(null, B)).toBeNull();
+    });
+
+    it("expands context only where the file exists on both sides", () => {
+        expect(canExpandContext(file("a.ts"))).toBe(true);
+        expect(canExpandContext(file("a.ts", { status: "renamed" }))).toBe(true);
+        expect(canExpandContext(file("a.ts", { status: "added" }))).toBe(false);
+        expect(canExpandContext(file("a.ts", { status: "removed" }))).toBe(false);
+    });
+});
+
+describe("placeThreads", () => {
+    const thread = (id: string, extra: Partial<Parameters<typeof placeThreads>[0][number]> = {}) => ({
+        id,
+        path: "src/gears.ts",
+        line: 12 as number | null,
+        diffSide: "RIGHT" as const,
+        subjectType: "LINE" as const,
+        isOutdated: false,
+        ...extra,
+    });
+
+    it("puts line threads at their line on their side, and file threads above the file", () => {
+        const placed = placeThreads(
+            [
+                thread("new"),
+                thread("same line"),
+                thread("old", { diffSide: "LEFT", line: 9 }),
+                thread("file", { subjectType: "FILE", line: null }),
+            ],
+            new Set(["src/gears.ts"]),
+        );
+        const gears = placed.byPath.get("src/gears.ts");
+        expect(gears?.new["12"]?.map((entry) => entry.id)).toEqual(["new", "same line"]);
+        expect(gears?.old["9"]?.map((entry) => entry.id)).toEqual(["old"]);
+        expect(gears?.file.map((entry) => entry.id)).toEqual(["file"]);
+        expect(gears?.count).toBe(4);
+        expect(placed.apart).toEqual([]);
+    });
+
+    it("lists outdated threads and threads on files the diff does not show apart", () => {
+        const placed = placeThreads(
+            [
+                thread("outdated", { isOutdated: true }),
+                thread("gone", { path: "src/old.ts" }),
+                thread("lost line", { line: null }),
+            ],
+            new Set(["src/gears.ts"]),
+        );
+        expect(placed.apart.map((entry) => entry.id)).toEqual(["outdated", "gone", "lost line"]);
+        expect(placed.byPath.size).toBe(0);
     });
 });

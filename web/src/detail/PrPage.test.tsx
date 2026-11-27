@@ -409,7 +409,7 @@ describe("PR page", () => {
             "Oil the axle",
         ]);
         expect(within(day).getByRole("link", { name: "aaaaaaa" }).getAttribute("href")).toBe(
-            `${PR_URL}/commits/aaaaaaa1111`,
+            "/acme/widgets/pull/12/commits/aaaaaaa1111",
         );
         expect(day.textContent).toContain("bob committed");
     });
@@ -479,12 +479,10 @@ describe("PR page", () => {
         expect(detailRequests).toBe(0);
     });
 
-    it("points to GitHub for the views it does not show yet", async () => {
-        open("/acme/widgets/pull/12/commits/aaaaaaa1111");
+    it("points to GitHub for the checks, which it does not show yet", async () => {
+        open("/acme/widgets/pull/12/checks");
         await heading();
-        expect(screen.getByRole("link", { name: "Open it on GitHub" }).getAttribute("href")).toBe(
-            `${PR_URL}/commits/aaaaaaa1111`,
-        );
+        expect(screen.getByRole("link", { name: "Open them on GitHub" }).getAttribute("href")).toBe(`${PR_URL}/checks`);
     });
 
     it("answers a path that is not a PR with a way back to the list", async () => {

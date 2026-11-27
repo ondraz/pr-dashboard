@@ -8,6 +8,7 @@ import { ElsewhereTab } from "./detail/ElsewhereTab.tsx";
 import { PrPage } from "./detail/PrPage.tsx";
 import { CollapseProvider } from "./list/collapse.tsx";
 import { ListPage } from "./list/ListPage.tsx";
+import { parseCommitSha, parseDiffRange } from "./logic/diff.ts";
 import { parsePrNumber } from "./logic/prRoute.ts";
 
 const rootRoute = createRootRoute({
@@ -63,28 +64,45 @@ const commitsRoute = createRoute({
     component: CommitsTab,
 });
 
+// The diff view brings a syntax highlighter for every language, so it loads only once a diff opens.
+const DiffTab = lazyRouteComponent(() => import("./detail/FilesTab.tsx"), "FilesTab");
+
 const commitRoute = createRoute({
     getParentRoute: () => prRoute,
     path: "commits/$sha",
-    component: () => <ElsewhereTab view="commit" />,
+    params: {
+        parse: ({ sha }) => (parseCommitSha(sha) ? { sha } : false),
+        stringify: ({ sha }) => ({ sha }),
+    },
+    component: DiffTab,
 });
 
 const filesRoute = createRoute({
     getParentRoute: () => prRoute,
     path: "files",
-    // The diff view brings a syntax highlighter for every language, so it loads only once a diff opens.
-    component: lazyRouteComponent(() => import("./detail/FilesTab.tsx"), "FilesTab"),
+    component: DiffTab,
+});
+
+// GitHub's own form for one commit's changes, `files/<sha>`, and for a range of commits, `files/<from>..<to>`.
+const filesRangeRoute = createRoute({
+    getParentRoute: () => prRoute,
+    path: "files/$range",
+    params: {
+        parse: ({ range }) => (parseDiffRange(range) ? { range } : false),
+        stringify: ({ range }) => ({ range }),
+    },
+    component: DiffTab,
 });
 
 const checksRoute = createRoute({
     getParentRoute: () => prRoute,
     path: "checks",
-    component: () => <ElsewhereTab view="checks" />,
+    component: ElsewhereTab,
 });
 
 export const routeTree = rootRoute.addChildren([
     indexRoute,
-    prRoute.addChildren([conversationRoute, commitsRoute, commitRoute, filesRoute, checksRoute]),
+    prRoute.addChildren([conversationRoute, commitsRoute, commitRoute, filesRoute, filesRangeRoute, checksRoute]),
 ]);
 
 // Going back to the list puts it where it was scrolled to.
