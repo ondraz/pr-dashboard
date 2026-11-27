@@ -229,17 +229,15 @@ make dev            # the same server in the foreground, with Vite for hot reloa
 ```
 
 The server binds to `127.0.0.1` and serves the built app, `/sessions.json` and the sign-in routes
-under `/auth/`. A path without a
-file name gets the app's page, so a link into the app survives a reload; any other path that is
-not a file of the build is a 404. The page comes with a strict Content Security Policy: only the
-bundle's own scripts and styles run, it connects only to the server and `api.github.com`, and it
-shows images only from GitHub. The one exception is the handful of fixed inline styles the diff
-view marks changed words with, which the policy allows by their hashes (listed in
-`shared/diffStyles.ts`, and pinned against the library by a test). Every library is bundled at build
-time; nothing loads from a CDN. The diff view and its syntax highlighter load as a separate bundle
-the first time a diff opens.
-Under `make dev` Vite serves the page instead, without that policy, since its hot reload runs
-inline scripts.
+under `/auth/`. A path without a file name gets the app's page, so a link into the app survives a
+reload; any other path that is not a file of the build is a 404. The page comes with a strict
+Content Security Policy: only the bundle's own scripts and styles run, it connects only to the
+server and `api.github.com`, and it shows images only from GitHub. The one exception is the handful
+of fixed inline styles the diff view marks changed words with, which the policy allows by their
+hashes (listed in `shared/diffStyles.ts`, and pinned against the library by a test). Every library
+is bundled at build time; nothing loads from a CDN. The diff view and its syntax highlighter load as
+a separate bundle the first time a diff opens. Under `make dev` Vite serves the page instead,
+without that policy, since its hot reload runs inline scripts.
 
 The app needs the server: opening the build over `file://` does not work.
 
@@ -329,7 +327,8 @@ exactly, and `.npmrc` keeps npm from installing any version less than two weeks 
 `web/src/detail/` the PR page; the list's data is loaded above both, so it survives opening a PR.
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
 parsing, the Copilot verdict, unresolved counts, review standing, filters, the list layout, and
-the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each pinned by unit tests.
+the diff's file tree, filter and raw-diff parsing - as plain TypeScript without React or I/O, each
+pinned by unit tests.
 
 `web/src/github/` is the GitHub API layer the app loads through: Octokit with REST
 pagination, typed GraphQL documents whose types GraphQL Code Generator writes into

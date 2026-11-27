@@ -2,9 +2,6 @@ import type { ChangedFile, FileStatus } from "../logic/diff.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import type { GitHubClient } from "./client.ts";
 
-/** GitHub lists at most this many files of a PR. */
-export const PULL_FILES_CAP = 3000;
-
 interface RestFile {
     filename: string;
     previous_filename?: string;
