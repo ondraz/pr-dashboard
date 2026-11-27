@@ -1,6 +1,8 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { type ReactNode, useMemo, useState } from "react";
+import { drafts, useDraftKeys } from "../app/drafts.ts";
 import { usePersistedChoice } from "../app/storage.ts";
+import { useWriteAccess } from "../app/writeAccess.tsx";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { External } from "../list/PrRows.tsx";
 import {
@@ -17,8 +19,11 @@ import {
     placeThreads,
     treeOrder,
 } from "../logic/diff.ts";
+import { draftPrefix, parseTargetSlot } from "../logic/drafts.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
+import type { CommentTarget } from "../logic/review.ts";
 import { timeAgo } from "../logic/time.ts";
+import { targetDraftKey } from "./CommentComposer.tsx";
 import { CommitPicker } from "./CommitPicker.tsx";
 import { type DiffMode, FileDiff } from "./FileDiff.tsx";
 import { FileTree } from "./FileTree.tsx";
@@ -103,6 +108,22 @@ function CommitHeader({
     );
 }
 
+const NO_COMPOSERS: readonly CommentTarget[] = [];
+
+/** The new comments being written on the PR's diff, by file: every draft kept for one opens its box. */
+function useComposers(route: PrRoute): Map<string, CommentTarget[]> {
+    const prefix = draftPrefix(route);
+    const keys = useDraftKeys(prefix);
+    return useMemo(() => {
+        const byPath = new Map<string, CommentTarget[]>();
+        for (const key of keys) {
+            const target = parseTargetSlot(key.slice(prefix.length));
+            if (target) byPath.set(target.path, [...(byPath.get(target.path) ?? []), target]);
+        }
+        return byPath;
+    }, [keys, prefix]);
+}
+
 function ThreadsApart({ threads }: { threads: ReviewThread[] }) {
     if (!threads.length) return null;
     return (
@@ -131,6 +152,16 @@ export function FilesTab() {
     const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
     const [loaded, setLoaded] = useState<ReadonlySet<string>>(new Set());
     const headOid = diffHead(spec, pr.headRefOid);
+    const { canWrite } = useWriteAccess(route);
+    const composers = useComposers(route);
+    // New comments go on the PR's whole diff, whose lines are the ones GitHub places them on.
+    const onComment =
+        canWrite && spec.kind === "all"
+            ? (target: CommentTarget) => {
+                  const key = targetDraftKey(route, target);
+                  if (drafts.read(key) === null) drafts.write(key, "");
+              }
+            : null;
 
     const shown = useMemo(() => filterFiles(files ?? [], filter), [files, filter]);
     const tree = useMemo(() => buildFileTree(shown), [shown]);
@@ -247,6 +278,8 @@ export function FilesTab() {
                                         : `https://github.com/${route.owner}/${route.repo}/blob/${headOid}/${encodePath(file.path)}`
                                 }
                                 filesUrl={filesUrl}
+                                composers={(onComment && composers.get(file.path)) || NO_COMPOSERS}
+                                onComment={onComment}
                             />
                         ))}
                     </div>

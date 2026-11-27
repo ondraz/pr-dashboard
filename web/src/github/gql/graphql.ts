@@ -99,6 +99,13 @@ export type PullRequestMergeMethod =
   /** Combine all commits from the head branch into a single commit in the base branch. */
   | 'SQUASH';
 
+/** The possible states of a pull request review comment. */
+export type PullRequestReviewCommentState =
+  /** A comment that is part of a pending review */
+  | 'PENDING'
+  /** A comment that is part of a submitted review */
+  | 'SUBMITTED';
+
 /** The review status of a pull request. */
 export type PullRequestReviewDecision =
   /** The pull request has received an approving review. */
@@ -107,6 +114,17 @@ export type PullRequestReviewDecision =
   | 'CHANGES_REQUESTED'
   /** A review is required before the pull request can be merged. */
   | 'REVIEW_REQUIRED';
+
+/** The possible events to perform on a pull request review. */
+export type PullRequestReviewEvent =
+  /** Submit feedback and approve merging these changes. */
+  | 'APPROVE'
+  /** Submit general feedback without explicit approval. */
+  | 'COMMENT'
+  /** Dismiss review so it now longer effects merging. */
+  | 'DISMISS'
+  /** Submit feedback that must be addressed before merging. */
+  | 'REQUEST_CHANGES';
 
 /** The possible states of a pull request review. */
 export type PullRequestReviewState =
@@ -173,7 +191,7 @@ export type ChangeProbeHitsFragment = { issueCount: number, nodes: Array<
     | Record<PropertyKey, never>
    | null> | null };
 
-export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ pullRequestReview: { id: string } | null, author:
+export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
           | { login: string }
           | { login: string }
           | { login: string }
@@ -187,7 +205,7 @@ export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCu
           | { login: string }
          | null } | null> | null } } | null> | null };
 
-export type OutstandingWorkFragment = { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ pullRequestReview: { id: string } | null, author:
+export type OutstandingWorkFragment = { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
             | { login: string }
             | { login: string }
             | { login: string }
@@ -215,7 +233,7 @@ export type ReviewThreadsPageQueryVariables = Exact<{
 }>;
 
 
-export type ReviewThreadsPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ pullRequestReview: { id: string } | null, author:
+export type ReviewThreadsPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
                 | { login: string }
                 | { login: string }
                 | { login: string }
@@ -435,7 +453,7 @@ export type TimelinePageFragment = { pageInfo: { hasNextPage: boolean, endCursor
     | { __typename: 'UserBlockedEvent' }
    | null> | null };
 
-export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, diffHunk: string, author:
+export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, author:
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
           | { login: string, avatarUrl: string, url: string }
@@ -463,7 +481,7 @@ export type PullRequestDetailQueryVariables = Exact<{
 }>;
 
 
-export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, baseRefOid: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, changedFiles: number, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
+export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, baseRefOid: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, changedFiles: number, viewerDidAuthor: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
@@ -489,13 +507,13 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
             | { login: string, avatarUrl: string, url: string }
             | { login: string, avatarUrl: string, url: string }
             | { login: string, avatarUrl: string, url: string }
-           | null } | null> | null } | null, assignees: { nodes: Array<{ login: string, avatarUrl: string, url: string } | null> | null }, labels: { nodes: Array<{ name: string } | null> | null } | null, milestone: { title: string, url: string } | null, closingIssuesReferences: { nodes: Array<{ number: number, title: string, url: string, state: IssueState, repository: { nameWithOwner: string } } | null> | null } | null, commits: { totalCount: number }, viewerLatestReview: { submittedAt: string | null, commit: { oid: string } | null } | null, reviews: { nodes: Array<{ id: string, databaseId: number | null, state: PullRequestReviewState, body: string, author:
+           | null } | null> | null } | null, assignees: { nodes: Array<{ login: string, avatarUrl: string, url: string } | null> | null }, labels: { nodes: Array<{ name: string } | null> | null } | null, milestone: { title: string, url: string } | null, closingIssuesReferences: { nodes: Array<{ number: number, title: string, url: string, state: IssueState, repository: { nameWithOwner: string } } | null> | null } | null, commits: { totalCount: number }, pendingReview: { nodes: Array<{ id: string, comments: { totalCount: number } } | null> | null } | null, viewerLatestReview: { submittedAt: string | null, commit: { oid: string } | null } | null, reviews: { nodes: Array<{ id: string, databaseId: number | null, state: PullRequestReviewState, body: string, author:
             | { login: string }
             | { login: string }
             | { login: string }
             | { login: string }
             | { login: string }
-           | null } | null> | null } | null, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, diffHunk: string, author:
+           | null } | null> | null } | null, reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, author:
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
@@ -859,7 +877,7 @@ export type ReviewThreadDetailPageQueryVariables = Exact<{
 }>;
 
 
-export type ReviewThreadDetailPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, diffHunk: string, author:
+export type ReviewThreadDetailPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ id: string, isResolved: boolean, isOutdated: boolean, path: string, line: number | null, originalLine: number | null, startLine: number | null, originalStartLine: number | null, diffSide: DiffSide, subjectType: PullRequestReviewThreadSubjectType, comments: { totalCount: number, nodes: Array<{ id: string, createdAt: string, url: string, bodyHTML: string, state: PullRequestReviewCommentState, diffHunk: string, author:
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
                 | { login: string, avatarUrl: string, url: string }
@@ -876,6 +894,62 @@ export type PullRequestCommitsQueryVariables = Exact<{
 
 
 export type PullRequestCommitsQuery = { repository: { pullRequest: { commits: { totalCount: number, pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ commit: { oid: string, abbreviatedOid: string, messageHeadline: string, committedDate: string, url: string, author: { name: string | null, avatarUrl: string, user: { login: string } | null } | null } } | null> | null } } | null } | null };
+
+export type AddPendingReviewMutationVariables = Exact<{
+  pullRequestId: string | number;
+  commitOID?: string | null | undefined;
+}>;
+
+
+export type AddPendingReviewMutation = { addPullRequestReview: { pullRequestReview: { id: string } | null } | null };
+
+export type AddReviewThreadMutationVariables = Exact<{
+  pullRequestReviewId: string | number;
+  path: string;
+  body: string;
+  subjectType: PullRequestReviewThreadSubjectType;
+  line?: number | null | undefined;
+  side?: DiffSide | null | undefined;
+  startLine?: number | null | undefined;
+  startSide?: DiffSide | null | undefined;
+}>;
+
+
+export type AddReviewThreadMutation = { addPullRequestReviewThread: { thread: { id: string } | null } | null };
+
+export type SubmitReviewMutationVariables = Exact<{
+  pullRequestReviewId: string | number;
+  event: PullRequestReviewEvent;
+  body?: string | null | undefined;
+}>;
+
+
+export type SubmitReviewMutation = { submitPullRequestReview: { pullRequestReview: { id: string } | null } | null };
+
+export type AddReviewMutationVariables = Exact<{
+  pullRequestId: string | number;
+  commitOID?: string | null | undefined;
+  event: PullRequestReviewEvent;
+  body?: string | null | undefined;
+}>;
+
+
+export type AddReviewMutation = { addPullRequestReview: { pullRequestReview: { id: string } | null } | null };
+
+export type DeleteReviewMutationVariables = Exact<{
+  pullRequestReviewId: string | number;
+}>;
+
+
+export type DeleteReviewMutation = { deletePullRequestReview: { pullRequestReview: { id: string } | null } | null };
+
+export type AddCommentMutationVariables = Exact<{
+  subjectId: string | number;
+  body: string;
+}>;
+
+
+export type AddCommentMutation = { addComment: { commentEdge: { node: { id: string } | null } | null } | null };
 
 export class TypedDocumentString<TResult, TVariables>
   extends String
@@ -924,6 +998,7 @@ export const ReviewThreadPageFragmentDoc = new TypedDocumentString(`
     comments(first: 1) {
       totalCount
       nodes {
+        state
         pullRequestReview {
           id
         }
@@ -973,6 +1048,7 @@ export const OutstandingWorkFragmentDoc = new TypedDocumentString(`
     comments(first: 1) {
       totalCount
       nodes {
+        state
         pullRequestReview {
           id
         }
@@ -1248,6 +1324,7 @@ export const ReviewThreadDetailPageFragmentDoc = new TypedDocumentString(`
         createdAt
         url
         bodyHTML
+        state
         diffHunk
         author {
           ...ActorFields
@@ -1359,6 +1436,7 @@ export const ReviewThreadsPageDocument = new TypedDocumentString(`
     comments(first: 1) {
       totalCount
       nodes {
+        state
         pullRequestReview {
           id
         }
@@ -1485,6 +1563,15 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
       changedFiles
       commits {
         totalCount
+      }
+      viewerDidAuthor
+      pendingReview: reviews(first: 1, states: [PENDING]) {
+        nodes {
+          id
+          comments {
+            totalCount
+          }
+        }
       }
       viewerLatestReview {
         submittedAt
@@ -1748,6 +1835,7 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
         createdAt
         url
         bodyHTML
+        state
         diffHunk
         author {
           ...ActorFields
@@ -2064,6 +2152,7 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
         createdAt
         url
         bodyHTML
+        state
         diffHunk
         author {
           ...ActorFields
@@ -2108,3 +2197,81 @@ export const PullRequestCommitsDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<PullRequestCommitsQuery, PullRequestCommitsQueryVariables>;
+export const AddPendingReviewDocument = new TypedDocumentString(`
+    mutation AddPendingReview($pullRequestId: ID!, $commitOID: GitObjectID) {
+  addPullRequestReview(
+    input: { pullRequestId: $pullRequestId, commitOID: $commitOID }
+  ) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AddPendingReviewMutation, AddPendingReviewMutationVariables>;
+export const AddReviewThreadDocument = new TypedDocumentString(`
+    mutation AddReviewThread($pullRequestReviewId: ID!, $path: String!, $body: String!, $subjectType: PullRequestReviewThreadSubjectType!, $line: Int, $side: DiffSide, $startLine: Int, $startSide: DiffSide) {
+  addPullRequestReviewThread(
+    input: {
+      pullRequestReviewId: $pullRequestReviewId
+      path: $path
+      body: $body
+      subjectType: $subjectType
+      line: $line
+      side: $side
+      startLine: $startLine
+      startSide: $startSide
+    }
+  ) {
+    thread {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AddReviewThreadMutation, AddReviewThreadMutationVariables>;
+export const SubmitReviewDocument = new TypedDocumentString(`
+    mutation SubmitReview($pullRequestReviewId: ID!, $event: PullRequestReviewEvent!, $body: String) {
+  submitPullRequestReview(
+    input: { pullRequestReviewId: $pullRequestReviewId, event: $event, body: $body }
+  ) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<SubmitReviewMutation, SubmitReviewMutationVariables>;
+export const AddReviewDocument = new TypedDocumentString(`
+    mutation AddReview($pullRequestId: ID!, $commitOID: GitObjectID, $event: PullRequestReviewEvent!, $body: String) {
+  addPullRequestReview(
+    input: {
+      pullRequestId: $pullRequestId
+      commitOID: $commitOID
+      event: $event
+      body: $body
+    }
+  ) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AddReviewMutation, AddReviewMutationVariables>;
+export const DeleteReviewDocument = new TypedDocumentString(`
+    mutation DeleteReview($pullRequestReviewId: ID!) {
+  deletePullRequestReview(input: { pullRequestReviewId: $pullRequestReviewId }) {
+    pullRequestReview {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<DeleteReviewMutation, DeleteReviewMutationVariables>;
+export const AddCommentDocument = new TypedDocumentString(`
+    mutation AddComment($subjectId: ID!, $body: String!) {
+  addComment(input: { subjectId: $subjectId, body: $body }) {
+    commentEdge {
+      node {
+        id
+      }
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<AddCommentMutation, AddCommentMutationVariables>;

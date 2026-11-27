@@ -230,6 +230,7 @@ export const reviewThreadDetailPageFragment = graphql(`
                     createdAt
                     url
                     bodyHTML
+                    state
                     diffHunk
                     author {
                         ...ActorFields
@@ -388,6 +389,15 @@ export const pullRequestDetailQuery = graphql(`
                 changedFiles
                 commits {
                     totalCount
+                }
+                viewerDidAuthor
+                pendingReview: reviews(first: 1, states: [PENDING]) {
+                    nodes {
+                        id
+                        comments {
+                            totalCount
+                        }
+                    }
                 }
                 viewerLatestReview {
                     submittedAt

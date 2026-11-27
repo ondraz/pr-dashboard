@@ -2,6 +2,7 @@ import { createRootRoute, createRoute, createRouter, Link, lazyRouteComponent, O
 import { AuthProvider } from "./app/AuthProvider.tsx";
 import { DashboardProvider } from "./app/DashboardProvider.tsx";
 import { ListEntryProvider } from "./app/listReturn.tsx";
+import { WriteAccessProvider } from "./app/writeAccess.tsx";
 import { CommitsTab } from "./detail/CommitsTab.tsx";
 import { ConversationTab } from "./detail/ConversationTab.tsx";
 import { ElsewhereTab } from "./detail/ElsewhereTab.tsx";
@@ -16,9 +17,11 @@ const rootRoute = createRootRoute({
         <AuthProvider>
             <CollapseProvider>
                 <DashboardProvider>
-                    <ListEntryProvider>
-                        <Outlet />
-                    </ListEntryProvider>
+                    <WriteAccessProvider>
+                        <ListEntryProvider>
+                            <Outlet />
+                        </ListEntryProvider>
+                    </WriteAccessProvider>
                 </DashboardProvider>
             </CollapseProvider>
         </AuthProvider>

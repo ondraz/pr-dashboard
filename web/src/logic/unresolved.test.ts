@@ -63,6 +63,16 @@ describe("tallyThreads", () => {
         expect(work).toMatchObject({ threads: 1, comments: 1 });
     });
 
+    it("leaves out a thread in the viewer's pending review, which nobody else sees yet", () => {
+        const work = emptyOutstandingWork();
+        const pending = thread(false, "bob", "bob", 1, "PRR_p");
+        const first = pending.comments?.nodes?.[0];
+        if (first) first.state = "PENDING";
+        tallyThreads(work, [pending, thread(false, "carol", "carol")], "bob");
+        expect(work).toMatchObject({ threads: 1, comments: 1, mine: 0 });
+        expect([...work.threadedReviews]).toEqual(["PRR_x"]);
+    });
+
     it("adds pages up", () => {
         const work = emptyOutstandingWork();
         tallyThreads(work, [thread(false, "bob", "bob")]);
