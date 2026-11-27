@@ -56,6 +56,13 @@ scrolled where it was, with its tab and collapsed sections as they were. The lis
 refreshing meanwhile. **Previous** and **Next**, or `[` and `]`, open the PRs either side of this
 one in the list as its tab, filters and grouping currently show it.
 
+Coming back to a PR marks what others added since you last had it open: comments, reviews, replies in
+threads, commits and events carry **New**, the Conversation tab says how many there are with a link to the
+first, and when the branch moved, the Files changed tab offers the changes since the head commit you last
+saw (`.../files/<then>..<now>`). Your own comments never count as new, and on a first visit nothing does.
+The time and head commit of each visit are kept in `localStorage`, for the 500 PRs opened most recently
+within 90 days.
+
 - The header: title, state, `base` from `head`, the author, and the list's badges (stack
   position, auto-merge or merge-queue position, conflicts, unresolved count, cross-repo set,
   Claude session buttons)
@@ -63,7 +70,9 @@ one in the list as its tab, filters and grouping currently show it.
   with the threads they started (diff excerpt, every reply, resolved and outdated ones marked and
   resolved ones folded), commits, force-pushes, review requests, label, title and base changes,
   draft state, closing and merging. Bodies are the HTML GitHub rendered from the Markdown, run
-  through DOMPurify once more before they reach the page. At the bottom, the merge box: the review
+  through DOMPurify once more before they reach the page. **Unresolved** narrows it to what is still
+  open: the reviews with unresolved threads, just those threads, and Copilot's verdict when it counts
+  as unresolved, the same number as the header's badge; **Everything** brings the rest back. At the bottom, the merge box: the review
   decision, the checks on the head commit counted by outcome (opening the Checks tab), whether the branch merges cleanly
   (conflicts, out of date, blocked by the base branch's rules, still being worked out), and
   auto-merge or the PR's place in the merge queue, with the actions that land it (see
@@ -112,6 +121,20 @@ one in the list as its tab, filters and grouping currently show it.
 The page refreshes on the list's schedule. In live mode it has a change check of its own, like the
 list's, which also notices a check finishing and GitHub working out mergeability; otherwise it
 refreshes on the fixed interval, or on returning to the tab for "on access".
+
+### Keyboard shortcuts
+
+`?`, or the `?` button beside **Previous** and **Next**, lists them. They do nothing while you type in a
+text box, or with Cmd, Ctrl or Alt held.
+
+| Key | Does |
+|---|---|
+| `[` / `]` | Previous and next PR in the list |
+| `j` / `k` | Next and previous file on **Files changed**, from where the page is scrolled to |
+| `n` / `p` | Next and previous unresolved thread, on **Conversation** or **Files changed** |
+| `c` | On **Files changed**, comment on the file being read (the one at the top of the window); on **Conversation**, go to the comment box at its foot |
+| `v` | Mark the file being read as viewed, or not; a file marked viewed folds, bringing the next one up |
+| `?` | List the shortcuts; `Escape` closes the list |
 
 ## Reviewing
 

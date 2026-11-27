@@ -118,3 +118,52 @@ export function hunkTail(diffHunk: string, lines = 4): { text: string; kind: "ad
             kind: text.startsWith("+") ? "add" : text.startsWith("-") ? "del" : "context",
         }));
 }
+
+/**
+ * The conversation narrowed to what is still open: each review with only its unresolved threads, the
+ * threads apart from any review likewise, and the review holding Copilot's standing verdict, which owes a
+ * change without a thread to resolve. Everything else drops out.
+ */
+export function unresolvedOnly(items: readonly ConversationItem[], verdictReviewId: string | null): ConversationItem[] {
+    return items.flatMap((item): ConversationItem[] => {
+        if (item.kind !== "review" && item.kind !== "threads") return [];
+        const threads = item.threads.filter((thread) => !thread.isResolved);
+        if (threads.length) return [{ ...item, threads }];
+        return item.kind === "review" && item.review.id === verdictReviewId ? [{ ...item, threads }] : [];
+    });
+}
+
+/** When something in the conversation was made, and by whom. */
+export interface Moment {
+    at: string | null;
+    author: string | null;
+}
+
+/** Every comment, review, commit and event an item holds, threads and their replies included. */
+export function itemMoments(item: ConversationItem): Moment[] {
+    const threadMoments = (threads: readonly ReviewThread[]) =>
+        threads.flatMap((thread) =>
+            (thread.comments.nodes ?? []).map((comment) => ({
+                at: comment?.createdAt ?? null,
+                author: comment?.author?.login ?? null,
+            })),
+        );
+    switch (item.kind) {
+        case "comment":
+            return [{ at: item.comment.createdAt, author: item.comment.author?.login ?? null }];
+        case "review":
+            return [
+                { at: item.review.submittedAt ?? item.review.createdAt, author: item.review.author?.login ?? null },
+                ...threadMoments(item.threads),
+            ];
+        case "commits":
+            return item.commits.map((commit) => ({
+                at: commit.committedDate,
+                author: commit.author?.user?.login ?? null,
+            }));
+        case "event":
+            return [{ at: item.event.createdAt, author: item.event.actor?.login ?? null }];
+        case "threads":
+            return threadMoments(item.threads);
+    }
+}

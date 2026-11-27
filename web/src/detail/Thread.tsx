@@ -1,8 +1,10 @@
+import { stepTo } from "../app/keys.ts";
 import type { ReviewThread } from "../github/pullRequest.ts";
 import { External } from "../list/PrRows.tsx";
 import { hunkTail, isPendingThread } from "../logic/conversation.ts";
 import { timeAgo } from "../logic/time.ts";
 import { CommentBody } from "./CommentBody.tsx";
+import { NewTag } from "./NewTag.tsx";
 import { SuggestionActions } from "./Suggestions.tsx";
 import { ThreadActions } from "./ThreadActions.tsx";
 
@@ -31,6 +33,13 @@ export function When({ at, href }: { at: string; href?: string }) {
     );
 }
 
+/** Scrolls to the next or previous unresolved thread inside `scope` and puts the focus on it; false at either end. */
+export function stepThread(scope: string, direction: 1 | -1): boolean {
+    const target = stepTo(Array.from(document.querySelectorAll(`${scope} .thread:not(.resolved)`)), direction);
+    target?.querySelector("summary")?.focus({ preventScroll: true });
+    return !!target;
+}
+
 /** A review thread: where it is, the diff it was left on unless it sits in a diff already, and every comment. */
 export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDiff?: boolean }) {
     const comments = (thread.comments.nodes ?? []).filter((comment) => !!comment);
@@ -40,7 +49,7 @@ export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDif
     const where =
         thread.subjectType === "FILE" ? "" : line ? `:${start && start !== line ? `${start}-` : ""}${line}` : "";
     return (
-        <details className="thread" open={!thread.isResolved}>
+        <details className={`thread${thread.isResolved ? " resolved" : ""}`} open={!thread.isResolved}>
             <summary>
                 <code>
                     {thread.path}
@@ -64,6 +73,7 @@ export function Thread({ thread, inDiff = false }: { thread: ReviewThread; inDif
                 <div key={comment.id} className="thread-comment">
                     <div className="thread-comment-header">
                         <Who actor={comment.author} /> <When at={comment.createdAt} href={comment.url} />
+                        <NewTag at={comment.createdAt} author={comment.author?.login} />
                         {comment.state === "PENDING" && comment !== first && (
                             <span className="thread-tag pending">Pending</span>
                         )}

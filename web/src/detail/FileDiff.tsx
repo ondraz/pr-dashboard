@@ -230,6 +230,7 @@ export function FileDiff(props: FileDiffProps) {
     return (
         <section
             id={fileAnchor(file.path)}
+            data-path={file.path}
             className={`file-diff${collapsed ? " collapsed" : ""}`}
             aria-label={file.path}
         >
