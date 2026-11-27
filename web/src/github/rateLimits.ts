@@ -47,14 +47,21 @@ export function readRateLimit(headers: Headers): RateLimit | null {
 
 /**
  * The rate-limit error a refused response stands for, if it is one: a 403 or 429 with no requests
- * left, or one carrying `retry-after` (the secondary limit).
+ * left, or one carrying `retry-after` or naming the secondary limit in its message. GitHub asks for
+ * at least a minute's wait on a secondary limit that gives no time.
  */
-export function rateLimitError(status: number, headers: Headers, now: number = Date.now()): RateLimitError | null {
+export function rateLimitError(
+    status: number,
+    headers: Headers,
+    message = "",
+    now: number = Date.now(),
+): RateLimitError | null {
     if (status !== 403 && status !== 429) return null;
     const retryAfter = header(headers, "retry-after");
     const limit = readRateLimit(headers);
     if (retryAfter !== null) return new RateLimitError(limit?.resource ?? "secondary", now + retryAfter * 1000);
     if (limit && limit.remaining === 0) return new RateLimitError(limit.resource, limit.resetAt);
+    if (/secondary rate limit/i.test(message)) return new RateLimitError("secondary", now + 60_000);
     return null;
 }
 
@@ -67,8 +74,14 @@ export class RateLimits {
         const limit = readRateLimit(headers);
         if (!limit) return;
         const previous = this.#snapshot.get(limit.resource);
-        // Responses can land out of order; within one window the lower count is the newer one.
-        if (previous && previous.resetAt === limit.resetAt && previous.remaining <= limit.remaining) return;
+        // Responses can land out of order: an earlier window, or a higher count within one, is older.
+        if (
+            previous &&
+            (limit.resetAt < previous.resetAt ||
+                (limit.resetAt === previous.resetAt && previous.remaining <= limit.remaining))
+        ) {
+            return;
+        }
         const next = new Map(this.#snapshot);
         next.set(limit.resource, limit);
         this.#snapshot = next;

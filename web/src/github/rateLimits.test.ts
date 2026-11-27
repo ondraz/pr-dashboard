@@ -35,9 +35,17 @@ describe("rateLimitError", () => {
     });
 
     it("uses retry-after for the secondary limit", () => {
-        expect(rateLimitError(403, { "retry-after": "30" }, 1_000)).toMatchObject({
+        expect(rateLimitError(403, { "retry-after": "30" }, "", 1_000)).toMatchObject({
             resource: "secondary",
             resetAt: 31_000,
+        });
+    });
+
+    it("waits a minute on a secondary limit that gives no time", () => {
+        const message = "You have exceeded a secondary rate limit. Please wait a few minutes before you try again.";
+        expect(rateLimitError(403, headers(4000), message, 1_000)).toMatchObject({
+            resource: "secondary",
+            resetAt: 61_000,
         });
     });
 
@@ -72,6 +80,8 @@ describe("RateLimits", () => {
         expect(limits.snapshot()).toBe(snapshot);
         limits.record(headers(5000, 2000));
         expect(limits.snapshot().get("core")?.remaining).toBe(5000);
+        limits.record(headers(4980, 1000));
+        expect(limits.snapshot().get("core")).toMatchObject({ remaining: 5000, resetAt: 2_000_000 });
     });
 
     it("ignores responses without rate-limit headers", () => {

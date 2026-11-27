@@ -76,6 +76,26 @@ describe("createGitHubClient", () => {
         expect(notModified).toBe(2);
     });
 
+    it("serves an unchanged search page from the kept response as it first came", async () => {
+        server.use(
+            http.get("https://api.github.com/search/issues", ({ request }) => {
+                if (request.headers.get("if-none-match") === '"s1"') return new HttpResponse(null, { status: 304 });
+                return HttpResponse.json(
+                    { total_count: 2, incomplete_results: false, items: [{ number: 1 }, { number: 2 }] },
+                    { headers: { etag: '"s1"' } },
+                );
+            }),
+        );
+        const client = createGitHubClient({ token: "t" });
+        const search = () => client.paginate("GET /search/issues", { q: "is:pr", per_page: 100 });
+
+        const first = await search();
+        const second = await search();
+
+        expect(first.map((hit) => hit.number)).toEqual([1, 2]);
+        expect(second.map((hit) => hit.number)).toEqual([1, 2]);
+    });
+
     it("bypasses the browser's HTTP cache", async () => {
         const fetchSpy = vi.fn<typeof fetch>(async () => Response.json({ login: "alice" }));
         await createGitHubClient({ token: "t", fetch: fetchSpy }).request("GET /user");
@@ -152,6 +172,20 @@ describe("graphql", () => {
         const promise = graphql(createGitHubClient({ token: "t" }), "query Viewer { viewer { login } }", {});
         await expect(promise).rejects.toBeInstanceOf(GraphqlError);
         await expect(promise).rejects.toThrow("bad query");
+    });
+
+    it("turns an exhausted GraphQL limit, reported with a 200, into a RateLimitError", async () => {
+        server.use(
+            http.post("https://api.github.com/graphql", () =>
+                HttpResponse.json(
+                    { data: null, errors: [{ type: "RATE_LIMITED", message: "API rate limit exceeded" }] },
+                    { headers: limitHeaders(0, "graphql") },
+                ),
+            ),
+        );
+        const promise = graphql(createGitHubClient({ token: "t" }), "query Viewer { viewer { login } }", {});
+        await expect(promise).rejects.toBeInstanceOf(RateLimitError);
+        await expect(promise).rejects.toMatchObject({ resource: "graphql", resetAt: 1795770000000 });
     });
 
     it("never sends a conditional request", async () => {

@@ -3,7 +3,7 @@ import { Octokit } from "@octokit/core";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
 import type { OctokitResponse } from "@octokit/types";
 import { EtagCache } from "./etagCache.ts";
-import { RateLimits, rateLimitError } from "./rateLimits.ts";
+import { RateLimitError, RateLimits, rateLimitError, readRateLimit } from "./rateLimits.ts";
 
 const GitHubOctokit = Octokit.plugin(paginateRest);
 
@@ -20,7 +20,14 @@ export interface GitHubClientOptions {
 
 interface ErrorWithResponse {
     status: number;
-    response?: { headers: Record<string, string | number | undefined> };
+    response?: { headers: Record<string, string | number | undefined>; data?: unknown };
+}
+
+function errorMessage(response: { data?: unknown }): string {
+    const { data } = response;
+    return typeof data === "object" && data !== null && typeof (data as { message?: unknown }).message === "string"
+        ? (data as { message: string }).message
+        : "";
 }
 
 function isErrorWithResponse(error: unknown): error is ErrorWithResponse {
@@ -59,15 +66,17 @@ export function createGitHubClient({
             const response = await request(options);
             rateLimits.record(response.headers);
             const etag = response.headers.etag;
-            if (conditional && typeof etag === "string") cache.set(key, etag, response);
+            // Pagination rewrites a search response in place, so the cache keeps its own copy.
+            if (conditional && typeof etag === "string") cache.set(key, etag, structuredClone(response));
             return response;
         } catch (error) {
             if (!isErrorWithResponse(error) || !error.response) throw error;
             rateLimits.record(error.response.headers);
             if (error.status === 304 && cached) {
-                return { ...cached.value, headers: { ...cached.value.headers, ...error.response.headers } };
+                const kept = structuredClone(cached.value);
+                return { ...kept, headers: { ...kept.headers, ...error.response.headers } };
             }
-            throw rateLimitError(error.status, error.response.headers) ?? error;
+            throw rateLimitError(error.status, error.response.headers, errorMessage(error.response)) ?? error;
         }
     });
 
@@ -98,7 +107,12 @@ export async function graphql<TResult, TVariables>(
     variables: TVariables,
 ): Promise<GraphqlResult<TResult>> {
     const response = await client.request("POST /graphql", { query: String(document), variables });
-    const body = response.data as { data?: TResult | null; errors?: { message: string }[] };
+    const body = response.data as { data?: TResult | null; errors?: { type?: string; message: string }[] };
+    // GraphQL reports an exhausted limit with a 200 and an error of this type.
+    if (body.errors?.some((error) => error.type === "RATE_LIMITED")) {
+        const limit = readRateLimit(response.headers);
+        throw new RateLimitError(limit?.resource ?? "graphql", limit?.resetAt ?? Date.now() + 60_000);
+    }
     if (!body.data) throw new GraphqlError(body.errors ?? []);
     return { data: body.data, errors: body.errors ?? [] };
 }
