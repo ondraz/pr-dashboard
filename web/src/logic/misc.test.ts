@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PrSession } from "../../../shared/sessions.ts";
-import { ChangeFingerprint, type ProbeData } from "./fingerprint.ts";
+import { ChangeFingerprint, type ProbeData, type PrProbe, prFingerprint } from "./fingerprint.ts";
 import { labelColor } from "./labels.ts";
 import { RefreshProgress } from "./progress.ts";
 import { sessionLink } from "./sessionLinks.ts";
@@ -140,5 +140,32 @@ describe("ChangeFingerprint", () => {
         expect(fingerprint.read(data({ issueCount: 1, nodes: [{}, null] }))).toBe(
             fingerprint.read(data({ issueCount: 1, nodes: [] })),
         );
+    });
+});
+
+describe("prFingerprint", () => {
+    const probe: PrProbe = {
+        updatedAt: "2026-11-26T10:00:00Z",
+        state: "OPEN",
+        isDraft: false,
+        headRefOid: "abc",
+        mergeable: "UNKNOWN",
+        mergeStateStatus: "UNKNOWN",
+        reviewDecision: null,
+        mergeQueueEntry: null,
+        headCommit: { nodes: [{ commit: { statusCheckRollup: { state: "PENDING" } } }] },
+    };
+
+    it("moves when a check finishes or mergeability is worked out, which leave updatedAt alone", () => {
+        const before = prFingerprint(probe);
+        expect(prFingerprint({ ...probe })).toBe(before);
+        expect(
+            prFingerprint({
+                ...probe,
+                headCommit: { nodes: [{ commit: { statusCheckRollup: { state: "SUCCESS" } } }] },
+            }),
+        ).not.toBe(before);
+        expect(prFingerprint({ ...probe, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN" })).not.toBe(before);
+        expect(prFingerprint({ ...probe, updatedAt: "2026-11-26T11:00:00Z" })).not.toBe(before);
     });
 });

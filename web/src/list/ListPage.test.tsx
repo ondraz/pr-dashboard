@@ -161,8 +161,8 @@ function renderPage(auth: AuthApi = Object.assign(new FakeAuthApi(), { configure
     const app = renderApp("/", {
         auth,
         fetchSessions: async () => ({
-            made: new Map([["https://github.com/acme/widgets/pull/12", madeSession]]),
-            reviewed: new Map<string, PrSession>(),
+            made: new Map([["https://github.com/acme/widgets/pull/12", [madeSession]]]),
+            reviewed: new Map<string, PrSession[]>(),
         }),
     });
     queryClients.push(app.queryClient);

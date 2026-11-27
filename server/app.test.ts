@@ -68,7 +68,9 @@ describe("createApp", () => {
         expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
         const body = (await res.json()) as SessionsPayload;
         expect(Object.keys(body)).toEqual(["made", "reviewed"]);
-        expect(body.made["https://github.com/example-org/widgets/pull/1"]?.title).toBe("Add CSV export to widgets");
+        expect(body.made["https://github.com/example-org/widgets/pull/1"]?.[0]?.title).toBe(
+            "Add CSV export to widgets",
+        );
     });
 
     it.each(["/", "/index.html", "/acme/widgets/pull/12", "/acme/widgets/pull/12/files", "/acme/web.site/pull/3"])(

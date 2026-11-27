@@ -4,11 +4,12 @@ import { readChangeFingerprint } from "../github/changeCheck.ts";
 import type { GitHubClient } from "../github/client.ts";
 import { type DashboardData, fetchViewerLogin, loadDashboard } from "../github/dashboard.ts";
 import { ChangeFingerprint } from "../logic/fingerprint.ts";
-import { LIVE_PROBE_MS, LiveCheck } from "../logic/liveCheck.ts";
+import { LiveCheck } from "../logic/liveCheck.ts";
 import { type RefreshMode, refreshInterval } from "../logic/refresh.ts";
 import type { PrSessions } from "../sessions.ts";
 import type { Credentials } from "./AuthProvider.tsx";
 import { useServices } from "./services.tsx";
+import { useLiveTicks } from "./useLiveTicks.ts";
 
 export interface DashboardView extends DashboardData {
     login: string;
@@ -106,20 +107,7 @@ export function useDashboard(credentials: Credentials | null, mode: RefreshMode)
         if (live) liveCheck?.setBaseline(query.data?.fingerprint ?? null);
     }, [live, liveCheck, query.data]);
 
-    const checking = live && !!liveCheck && !!query.data && !query.error;
-    useEffect(() => {
-        if (!checking || !liveCheck) return;
-        const check = () => {
-            if (document.visibilityState === "visible") void liveCheck.check();
-        };
-        const timer = setInterval(check, LIVE_PROBE_MS);
-        // Back on the tab, check at once rather than at the next tick.
-        document.addEventListener("visibilitychange", check);
-        return () => {
-            clearInterval(timer);
-            document.removeEventListener("visibilitychange", check);
-        };
-    }, [checking, liveCheck]);
+    useLiveTicks(live && query.data && !query.error ? liveCheck : null);
 
     return {
         github: session,

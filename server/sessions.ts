@@ -35,12 +35,13 @@ export class SessionIndex {
     }
 
     /**
-     * `made` counts a PR the session created or pushed; the desktop app marks a PR it only saw
-     * `onlySeen`, and that does not count. `reviewed` counts a PR the session posted a review or
-     * comment on, which only the transcripts record.
+     * Every session per PR and role, the most recently active first. `made` counts a PR the session
+     * created or pushed; the desktop app marks a PR it only saw `onlySeen`, and that does not count.
+     * `reviewed` counts a PR the session posted a review or comment on, which only the transcripts
+     * record.
      */
     async read(): Promise<SessionsPayload> {
-        const made = new Map<string, PrSession>();
+        const made = new Map<string, PrSession[]>();
         const desktopByCli = new Map<string, PrSession>();
         for (const path of await listFiles(this.#desktopDir, 2, (name) => /^local_.*\.json$/.test(name))) {
             const session = await readJsonObject(path);
@@ -53,12 +54,12 @@ export class SessionIndex {
             };
             if (isNonEmptyString(session.cliSessionId)) desktopByCli.set(session.cliSessionId, entry);
             for (const pr of Array.isArray(session.prs) ? session.prs : []) {
-                if (isObject(pr) && isNonEmptyString(pr.url) && !pr.onlySeen) keepNewest(made, pr.url, entry);
+                if (isObject(pr) && isNonEmptyString(pr.url) && !pr.onlySeen) addSession(made, pr.url, entry);
             }
         }
-        const reviewed = new Map<string, PrSession>();
+        const reviewed = new Map<string, PrSession[]>();
         await this.#readTranscripts(desktopByCli, made, reviewed);
-        return { made: Object.fromEntries(made), reviewed: Object.fromEntries(reviewed) };
+        return { made: newestFirst(made), reviewed: newestFirst(reviewed) };
     }
 
     /**
@@ -67,8 +68,8 @@ export class SessionIndex {
      */
     async #readTranscripts(
         desktopByCli: Map<string, PrSession>,
-        made: Map<string, PrSession>,
-        reviewed: Map<string, PrSession>,
+        made: Map<string, PrSession[]>,
+        reviewed: Map<string, PrSession[]>,
     ): Promise<void> {
         const seen = new Set<string>();
         for (const path of await listFiles(this.#projectsDir, 1, (name) => name.endsWith(".jsonl"))) {
@@ -92,8 +93,8 @@ export class SessionIndex {
                 archived: false,
                 lastActivityAt: Math.trunc(cached.mtimeMs),
             };
-            if (!desktop) for (const url of cached.scan.made) keepNewest(made, url, entry);
-            for (const url of cached.scan.reviewed) keepNewest(reviewed, url, entry);
+            if (!desktop) for (const url of cached.scan.made) addSession(made, url, entry);
+            for (const url of cached.scan.reviewed) addSession(reviewed, url, entry);
         }
         for (const path of this.#transcripts.keys()) if (!seen.has(path)) this.#transcripts.delete(path);
     }
@@ -141,9 +142,17 @@ function toolAction(block: JsonObject): string {
     return [block.name, input.skill, input.args].filter(isNonEmptyString).join(" ");
 }
 
-function keepNewest(best: Map<string, PrSession>, url: string, entry: PrSession): void {
-    const current = best.get(url);
-    if (!current || entry.lastActivityAt > current.lastActivityAt) best.set(url, entry);
+/** Several transcripts can stand for one desktop session, which is listed once. */
+function addSession(byUrl: Map<string, PrSession[]>, url: string, entry: PrSession): void {
+    const list = byUrl.get(url);
+    if (!list) byUrl.set(url, [entry]);
+    else if (!list.some((session) => session.id === entry.id)) list.push(entry);
+}
+
+function newestFirst(byUrl: Map<string, PrSession[]>): Record<string, PrSession[]> {
+    return Object.fromEntries(
+        [...byUrl].map(([url, list]) => [url, list.toSorted((a, b) => b.lastActivityAt - a.lastActivityAt)]),
+    );
 }
 
 /** Files `depth` directories below `dir` whose name matches; unreadable directories are skipped. */

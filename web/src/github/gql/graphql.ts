@@ -4,6 +4,44 @@ type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
 /** Internal type. DO NOT USE DIRECTLY. */
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 import type { DocumentTypeDecoration } from '@graphql-typed-document-node/core';
+/** The possible states of a check run in a status rollup. */
+export type CheckRunState =
+  /** The check run requires action. */
+  | 'ACTION_REQUIRED'
+  /** The check run has been cancelled. */
+  | 'CANCELLED'
+  /** The check run has been completed. */
+  | 'COMPLETED'
+  /** The check run has failed. */
+  | 'FAILURE'
+  /** The check run is in progress. */
+  | 'IN_PROGRESS'
+  /** The check run was neutral. */
+  | 'NEUTRAL'
+  /** The check run is in pending state. */
+  | 'PENDING'
+  /** The check run has been queued. */
+  | 'QUEUED'
+  /** The check run was skipped. */
+  | 'SKIPPED'
+  /** The check run was marked stale by GitHub. Only GitHub can use this conclusion. */
+  | 'STALE'
+  /** The check run has failed at startup. */
+  | 'STARTUP_FAILURE'
+  /** The check run has succeeded. */
+  | 'SUCCESS'
+  /** The check run has timed out. */
+  | 'TIMED_OUT'
+  /** The check run is in waiting state. */
+  | 'WAITING';
+
+/** The possible states of an issue. */
+export type IssueState =
+  /** An issue that has been closed */
+  | 'CLOSED'
+  /** An issue that is still open */
+  | 'OPEN';
+
 /** The possible states for a merge queue entry. */
 export type MergeQueueEntryState =
   /** The entry is currently waiting for checks to pass. */
@@ -16,6 +54,25 @@ export type MergeQueueEntryState =
   | 'QUEUED'
   /** The entry is currently unmergeable. */
   | 'UNMERGEABLE';
+
+/** Detailed status information about a pull request merge. */
+export type MergeStateStatus =
+  /** The head ref is out of date. */
+  | 'BEHIND'
+  /** The merge is blocked. */
+  | 'BLOCKED'
+  /** Mergeable and passing commit status. */
+  | 'CLEAN'
+  /** The merge commit cannot be cleanly created. */
+  | 'DIRTY'
+  /** The merge is blocked due to the pull request being a draft. */
+  | 'DRAFT'
+  /** Mergeable with passing commit status and pre-receive hooks. */
+  | 'HAS_HOOKS'
+  /** The state cannot currently be determined. */
+  | 'UNKNOWN'
+  /** Mergeable with non-passing commit status. */
+  | 'UNSTABLE';
 
 /** Whether or not a PullRequest can be merged. */
 export type MergeableState =
@@ -72,6 +129,19 @@ export type PullRequestState =
   | 'MERGED'
   /** A pull request that is still open. */
   | 'OPEN';
+
+/** The possible commit status states. */
+export type StatusState =
+  /** Status is errored. */
+  | 'ERROR'
+  /** Status is expected. */
+  | 'EXPECTED'
+  /** Status is failing. */
+  | 'FAILURE'
+  /** Status is pending. */
+  | 'PENDING'
+  /** Status is successful. */
+  | 'SUCCESS';
 
 export type ChangeProbeQueryVariables = Exact<{
   mine: string;
@@ -366,6 +436,19 @@ export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean,
           | { login: string, avatarUrl: string, url: string }
          | null, pullRequestReview: { id: string } | null } | null> | null } } | null> | null };
 
+export type HeadChecksFragment = { headCommit: { nodes: Array<{ commit: { oid: string, statusCheckRollup: { state: StatusState, contexts: { checkRunCountsByState: Array<{ state: CheckRunState, count: number }> | null, statusContextCountsByState: Array<{ state: StatusState, count: number }> | null } } | null } } | null> | null } };
+
+export type PullRequestProbeFieldsFragment = { updatedAt: string, state: PullRequestState, isDraft: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, mergeQueueEntry: { position: number } | null, headCommit: { nodes: Array<{ commit: { statusCheckRollup: { state: StatusState } | null } } | null> | null } };
+
+export type PullRequestProbeQueryVariables = Exact<{
+  owner: string;
+  name: string;
+  number: number;
+}>;
+
+
+export type PullRequestProbeQuery = { repository: { pullRequest: { updatedAt: string, state: PullRequestState, isDraft: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, mergeQueueEntry: { position: number } | null, headCommit: { nodes: Array<{ commit: { statusCheckRollup: { state: StatusState } | null } } | null> | null } } | null } | null };
+
 export type PullRequestDetailQueryVariables = Exact<{
   owner: string;
   name: string;
@@ -373,7 +456,7 @@ export type PullRequestDetailQueryVariables = Exact<{
 }>;
 
 
-export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, mergeable: MergeableState, changedFiles: number, author:
+export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, changedFiles: number, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
@@ -388,7 +471,18 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
           | { login: string }
           | { login: string }
           | { login: string }
-         | null } | null, mergeQueueEntry: { position: number, state: MergeQueueEntryState } | null, commits: { totalCount: number }, reviews: { nodes: Array<{ id: string, databaseId: number | null, state: PullRequestReviewState, body: string, author:
+         | null } | null, mergeQueueEntry: { position: number, state: MergeQueueEntryState } | null, reviewRequests: { nodes: Array<{ requestedReviewer:
+            | { login: string }
+            | { login: string }
+            | { name: string, combinedSlug: string }
+            | { login: string }
+           | null } | null> | null } | null, latestReviews: { nodes: Array<{ state: PullRequestReviewState, submittedAt: string | null, author:
+            | { login: string, avatarUrl: string, url: string }
+            | { login: string, avatarUrl: string, url: string }
+            | { login: string, avatarUrl: string, url: string }
+            | { login: string, avatarUrl: string, url: string }
+            | { login: string, avatarUrl: string, url: string }
+           | null } | null> | null } | null, assignees: { nodes: Array<{ login: string, avatarUrl: string, url: string } | null> | null }, labels: { nodes: Array<{ name: string } | null> | null } | null, milestone: { title: string, url: string } | null, closingIssuesReferences: { nodes: Array<{ number: number, title: string, url: string, state: IssueState, repository: { nameWithOwner: string } } | null> | null } | null, commits: { totalCount: number }, reviews: { nodes: Array<{ id: string, databaseId: number | null, state: PullRequestReviewState, body: string, author:
             | { login: string }
             | { login: string }
             | { login: string }
@@ -569,7 +663,7 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
           | { __typename: 'UnpinnedEvent' }
           | { __typename: 'UnsubscribedEvent' }
           | { __typename: 'UserBlockedEvent' }
-         | null> | null } } | null } | null };
+         | null> | null }, headCommit: { nodes: Array<{ commit: { oid: string, statusCheckRollup: { state: StatusState, contexts: { checkRunCountsByState: Array<{ state: CheckRunState, count: number }> | null, statusContextCountsByState: Array<{ state: StatusState, count: number }> | null } } | null } } | null> | null } } | null } | null };
 
 export type PullRequestTimelinePageQueryVariables = Exact<{
   owner: string;
@@ -1162,6 +1256,53 @@ export const ReviewThreadDetailPageFragmentDoc = new TypedDocumentString(`
   avatarUrl(size: 40)
   url
 }`, {"fragmentName":"ReviewThreadDetailPage"}) as unknown as TypedDocumentString<ReviewThreadDetailPageFragment, unknown>;
+export const HeadChecksFragmentDoc = new TypedDocumentString(`
+    fragment HeadChecks on PullRequest {
+  headCommit: commits(last: 1) {
+    nodes {
+      commit {
+        oid
+        statusCheckRollup {
+          state
+          contexts(first: 1) {
+            checkRunCountsByState {
+              state
+              count
+            }
+            statusContextCountsByState {
+              state
+              count
+            }
+          }
+        }
+      }
+    }
+  }
+}
+    `, {"fragmentName":"HeadChecks"}) as unknown as TypedDocumentString<HeadChecksFragment, unknown>;
+export const PullRequestProbeFieldsFragmentDoc = new TypedDocumentString(`
+    fragment PullRequestProbeFields on PullRequest {
+  updatedAt
+  state
+  isDraft
+  headRefOid
+  mergeable
+  mergeStateStatus
+  reviewDecision
+  mergeQueueEntry {
+    position
+  }
+  headCommit: commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          state
+        }
+      }
+    }
+  }
+}
+    `, {"fragmentName":"PullRequestProbeFields"}) as unknown as TypedDocumentString<PullRequestProbeFieldsFragment, unknown>;
 export const ChangeProbeDocument = new TypedDocumentString(`
     query ChangeProbe($mine: String!, $requested: String!, $reviewed: String!) {
   mine: search(type: ISSUE, query: $mine, first: 100) {
@@ -1227,6 +1368,35 @@ export const ReviewThreadsPageDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<ReviewThreadsPageQuery, ReviewThreadsPageQueryVariables>;
+export const PullRequestProbeDocument = new TypedDocumentString(`
+    query PullRequestProbe($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      ...PullRequestProbeFields
+    }
+  }
+}
+    fragment PullRequestProbeFields on PullRequest {
+  updatedAt
+  state
+  isDraft
+  headRefOid
+  mergeable
+  mergeStateStatus
+  reviewDecision
+  mergeQueueEntry {
+    position
+  }
+  headCommit: commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          state
+        }
+      }
+    }
+  }
+}`) as unknown as TypedDocumentString<PullRequestProbeQuery, PullRequestProbeQueryVariables>;
 export const PullRequestDetailDocument = new TypedDocumentString(`
     query PullRequestDetail($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -1250,7 +1420,8 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
       isCrossRepository
       body
       bodyHTML
-      mergeable
+      ...PullRequestProbeFields
+      ...HeadChecks
       autoMergeRequest {
         mergeMethod
         enabledBy {
@@ -1260,6 +1431,47 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
       mergeQueueEntry {
         position
         state
+      }
+      reviewRequests(first: 50) {
+        nodes {
+          requestedReviewer {
+            ...RequestedReviewerFields
+          }
+        }
+      }
+      latestReviews(first: 50) {
+        nodes {
+          state
+          submittedAt
+          author {
+            ...ActorFields
+          }
+        }
+      }
+      assignees(first: 20) {
+        nodes {
+          ...ActorFields
+        }
+      }
+      labels(first: 50) {
+        nodes {
+          name
+        }
+      }
+      milestone {
+        title
+        url
+      }
+      closingIssuesReferences(first: 20) {
+        nodes {
+          number
+          title
+          url
+          state
+          repository {
+            nameWithOwner
+          }
+        }
       }
       changedFiles
       commits {
@@ -1526,6 +1738,49 @@ fragment ReviewThreadDetailPage on PullRequestReviewThreadConnection {
         }
         pullRequestReview {
           id
+        }
+      }
+    }
+  }
+}
+fragment HeadChecks on PullRequest {
+  headCommit: commits(last: 1) {
+    nodes {
+      commit {
+        oid
+        statusCheckRollup {
+          state
+          contexts(first: 1) {
+            checkRunCountsByState {
+              state
+              count
+            }
+            statusContextCountsByState {
+              state
+              count
+            }
+          }
+        }
+      }
+    }
+  }
+}
+fragment PullRequestProbeFields on PullRequest {
+  updatedAt
+  state
+  isDraft
+  headRefOid
+  mergeable
+  mergeStateStatus
+  reviewDecision
+  mergeQueueEntry {
+    position
+  }
+  headCommit: commits(last: 1) {
+    nodes {
+      commit {
+        statusCheckRollup {
+          state
         }
       }
     }

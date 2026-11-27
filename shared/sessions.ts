@@ -10,8 +10,8 @@ export interface PrSession {
     lastActivityAt: number;
 }
 
-/** The `/sessions.json` payload: PR URL to the most recently active session per role. */
+/** The `/sessions.json` payload: PR URL to every session per role, the most recently active first. */
 export interface SessionsPayload {
-    made: Record<string, PrSession>;
-    reviewed: Record<string, PrSession>;
+    made: Record<string, PrSession[]>;
+    reviewed: Record<string, PrSession[]>;
 }

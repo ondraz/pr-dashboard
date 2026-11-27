@@ -242,6 +242,67 @@ export const reviewThreadDetailPageFragment = graphql(`
     }
 `);
 
+/** What the merge box and the live check read of the head commit's checks. */
+export const headChecksFragment = graphql(`
+    fragment HeadChecks on PullRequest {
+        headCommit: commits(last: 1) {
+            nodes {
+                commit {
+                    oid
+                    statusCheckRollup {
+                        state
+                        contexts(first: 1) {
+                            checkRunCountsByState {
+                                state
+                                count
+                            }
+                            statusContextCountsByState {
+                                state
+                                count
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+`);
+
+/** The fields whose change means the open PR should be read again. */
+export const pullRequestProbeFragment = graphql(`
+    fragment PullRequestProbeFields on PullRequest {
+        updatedAt
+        state
+        isDraft
+        headRefOid
+        mergeable
+        mergeStateStatus
+        reviewDecision
+        mergeQueueEntry {
+            position
+        }
+        headCommit: commits(last: 1) {
+            nodes {
+                commit {
+                    statusCheckRollup {
+                        state
+                    }
+                }
+            }
+        }
+    }
+`);
+
+export const pullRequestProbeQuery = graphql(`
+    query PullRequestProbe($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+                ...PullRequestProbeFields
+            }
+        }
+    }
+`);
+
 /**
  * Everything the PR page shows but the commit list, in one request. The timeline and the review
  * threads are paged on their own when a PR has more than 100 of either.
@@ -269,7 +330,8 @@ export const pullRequestDetailQuery = graphql(`
                 isCrossRepository
                 body
                 bodyHTML
-                mergeable
+                ...PullRequestProbeFields
+                ...HeadChecks
                 autoMergeRequest {
                     mergeMethod
                     enabledBy {
@@ -279,6 +341,47 @@ export const pullRequestDetailQuery = graphql(`
                 mergeQueueEntry {
                     position
                     state
+                }
+                reviewRequests(first: 50) {
+                    nodes {
+                        requestedReviewer {
+                            ...RequestedReviewerFields
+                        }
+                    }
+                }
+                latestReviews(first: 50) {
+                    nodes {
+                        state
+                        submittedAt
+                        author {
+                            ...ActorFields
+                        }
+                    }
+                }
+                assignees(first: 20) {
+                    nodes {
+                        ...ActorFields
+                    }
+                }
+                labels(first: 50) {
+                    nodes {
+                        name
+                    }
+                }
+                milestone {
+                    title
+                    url
+                }
+                closingIssuesReferences(first: 20) {
+                    nodes {
+                        number
+                        title
+                        url
+                        state
+                        repository {
+                            nameWithOwner
+                        }
+                    }
                 }
                 changedFiles
                 commits {

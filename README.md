@@ -53,20 +53,30 @@ title, opens it on GitHub instead. The page lives at the same path as on GitHub
 (`/owner/repo/pull/123`, `.../commits`), so swapping `github.com` for `localhost:6789` in a link
 opens the PR here, and back, forward and reload work. **Pull requests** goes back to the list,
 scrolled where it was, with its tab and collapsed sections as they were. The list keeps
-refreshing meanwhile.
+refreshing meanwhile. **Previous** and **Next**, or `[` and `]`, open the PRs either side of this
+one in the list as its tab, filters and grouping currently show it.
 
-- The header: title, state, `base` from `head`, the author, and the list's badges (auto-merge or
-  merge-queue position, conflicts, unresolved count, cross-repo set, Claude session buttons)
+- The header: title, state, `base` from `head`, the author, and the list's badges (stack
+  position, auto-merge or merge-queue position, conflicts, unresolved count, cross-repo set,
+  Claude session buttons)
 - **Conversation**: the description, then everything that happened, in order: comments, reviews
   with the threads they started (diff excerpt, every reply, resolved and outdated ones marked and
   resolved ones folded), commits, force-pushes, review requests, label, title and base changes,
   draft state, closing and merging. Bodies are the HTML GitHub rendered from the Markdown, run
-  through DOMPurify once more before they reach the page
+  through DOMPurify once more before they reach the page. At the bottom, the merge box: the review decision, the checks on the head commit counted by
+  outcome, whether the branch merges cleanly (conflicts, out of date, blocked by the base branch's
+  rules, still being worked out), and auto-merge or the PR's place in the merge queue
 - **Commits**: the PR's commits, by day
 - **Checks** and **Files changed** open on GitHub for now, as does a single commit's diff
+- The sidebar: reviewers and where each one's review stands, assignees, labels, the issues the PR
+  closes, the milestone, the **Stack** the PR sits in (anyone's PRs below it down to the base
+  branch and on top of it, each opening here), and **Sessions**: every Claude session that made
+  or reviewed the PR, the most recent first
 
-The page refreshes on the list's schedule: on the fixed interval, or on returning to the tab for
-"on access". It is read-only; nothing on it writes to GitHub.
+The page refreshes on the list's schedule. In live mode it has a change check of its own, like the
+list's, which also notices a check finishing and GitHub working out mergeability; otherwise it
+refreshes on the fixed interval, or on returning to the tab for "on access". It is read-only;
+nothing on it writes to GitHub.
 
 ## Cross-repo grouping
 
@@ -220,8 +230,8 @@ The app needs the server: opening the build over `file://` does not work.
 ## Claude sessions
 
 `make serve` runs the server in [server/](server/), which serves the page and also answers
-`/sessions.json`: each PR URL mapped to the most recently active Claude session that made it,
-and to the one that reviewed it. It reads two places:
+`/sessions.json`: each PR URL mapped to every Claude session that made it, and every one that
+reviewed it, the most recently active first. It reads two places:
 
 - The Claude desktop app records, per Code session, the PRs that session created or pushed, in
   `~/Library/Application Support/Claude/claude-code-sessions`. A PR the session only mentioned
@@ -234,8 +244,8 @@ and to the one that reviewed it. It reads two places:
   `vscode://anthropic.claude-code/open?session=<id>`. Each transcript is re-read only when it
   changes.
 
-Your own PRs show the session that made them; the two review tabs show the session that
-reviewed them.
+Your own PRs show the latest session that made them; the two review tabs show the latest session
+that reviewed them. A PR's page lists them all.
 
 The list is read on every refresh and only answered to a loopback Host (`localhost`,
 `127.0.0.1` or `[::1]`), with no CORS header, so other sites cannot read it. Served any other
@@ -271,9 +281,12 @@ holds and each one's last update, head commit, mergeability, review decision, dr
 merge-queue position; a new or closed PR can take a minute to show, since GitHub's search index
 lags behind. A check run finishing does not count as a change, as the dashboard shows no CI.
 
-Opening a PR costs one GraphQL query for its header, description, timeline and review threads, and
-one more per further 100 timeline events or threads (up to 1,000 of each). The Commits tab is one
-more query per 100 commits.
+Opening a PR costs one GraphQL query for its header, sidebar, merge box, description, timeline
+and review threads, and one more per further 100 timeline events or threads (up to 1,000 of
+each). The Commits tab is one more query per 100 commits. The Stack panel costs a REST read of the
+PR, one lookup per PR below it and one per level above it, at most 5 each way; with ETags these
+cost nothing once unchanged. In live mode an open PR adds its own change check, one more point
+every 15 seconds, so about 480 points an hour with the list's.
 
 ## Development
 

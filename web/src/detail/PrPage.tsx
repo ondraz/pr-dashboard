@@ -1,16 +1,20 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { type ReactNode, useMemo } from "react";
 import { useAuth } from "../app/AuthProvider.tsx";
+import { useDashboardState } from "../app/DashboardProvider.tsx";
 import { useBackToList } from "../app/listReturn.tsx";
 import { SignIn } from "../app/SignIn.tsx";
 import type { PullRequestDetail } from "../github/pullRequest.ts";
 import { ArrowLeftIcon, RepoIcon } from "../list/icons.tsx";
 import { External } from "../list/PrRows.tsx";
-import type { PrRoute } from "../logic/prRoute.ts";
+import { githubPrUrl, type PrRoute } from "../logic/prRoute.ts";
 import { timeAgo } from "../logic/time.ts";
 import { PrContext } from "./PrContext.tsx";
 import { PrHeader } from "./PrHeader.tsx";
-import { usePullRequest } from "./usePullRequest.ts";
+import { PrSteps } from "./PrSteps.tsx";
+import { Sidebar } from "./Sidebar.tsx";
+import { prQueryKey, usePullRequest, usePullRequestLiveCheck } from "./usePullRequest.ts";
 
 function BackButton() {
     const back = useBackToList();
@@ -51,14 +55,19 @@ function Tabs({ route, detail }: { route: PrRoute; detail: PullRequestDetail }) 
     );
 }
 
-/** One PR, at the same path as on GitHub: its header, tabs and the open tab. */
+/** One PR, at the same path as on GitHub: its header, tabs, the open tab and the sidebar. */
 export function PrPage() {
     const { owner, repo, number } = useParams({ from: "/$owner/$repo/pull/$number" });
     const route = useMemo(() => ({ owner, repo, number }), [owner, repo, number]);
     const auth = useAuth();
+    const { github } = useDashboardState();
+    const queryClient = useQueryClient();
     const query = usePullRequest(route);
     const { data, error, isFetching } = query;
+    usePullRequestLiveCheck(route, data, isFetching);
     const open = useMemo(() => (data ? { route, detail: data } : null), [route, data]);
+    // The commits and the stack are read again with the PR.
+    const refresh = () => void queryClient.invalidateQueries({ queryKey: prQueryKey(github?.id, route) });
 
     let content: ReactNode;
     if (!auth.ready) {
@@ -90,7 +99,12 @@ export function PrPage() {
                 {error && <div className="error">Refresh failed: {error.message}</div>}
                 <PrHeader />
                 <Tabs route={route} detail={open.detail} />
-                <Outlet />
+                <div className="detail-body">
+                    <div className="detail-main">
+                        <Outlet />
+                    </div>
+                    <Sidebar />
+                </div>
             </PrContext>
         );
     }
@@ -101,6 +115,7 @@ export function PrPage() {
             <div className="header">
                 <div className="detail-nav">
                     <BackButton />
+                    <PrSteps url={githubPrUrl(route)} />
                     <span className="detail-repo">
                         <RepoIcon />
                         <External href={`https://github.com/${owner}/${repo}`}>
@@ -120,7 +135,7 @@ export function PrPage() {
                         type="button"
                         className={`refresh-btn${isFetching ? " is-refreshing" : ""}`}
                         disabled={isFetching || !auth.credentials}
-                        onClick={() => void query.refetch()}
+                        onClick={refresh}
                     >
                         <span className="btn-spinner" />
                         <span>Refresh</span>

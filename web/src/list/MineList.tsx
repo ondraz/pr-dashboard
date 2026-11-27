@@ -9,12 +9,11 @@ import {
     type StackMember,
 } from "../logic/layout.ts";
 import type { Stack, StackName } from "../logic/stacks.ts";
-import type { PrSessions } from "../sessions.ts";
+import { latestSession, type PrSessions } from "../sessions.ts";
 import { useCollapse } from "./collapse.tsx";
 import { BranchIcon, ChevronIcon, LinkIcon, RepoIcon } from "./icons.tsx";
+import type { Grouping } from "./listView.ts";
 import { ContextItem, External, type FeatureBadgeProps, PrItem, UnresolvedTotal } from "./PrRows.tsx";
-
-export type Grouping = "repo" | "feature";
 
 interface ListContext {
     grouping: Grouping;
@@ -42,7 +41,12 @@ function featureBadge(pr: MyPr, ctx: ListContext): FeatureBadgeProps | null {
 
 function Pr({ pr, ctx }: { pr: MyPr; ctx: ListContext }) {
     return (
-        <PrItem pr={pr} session={ctx.sessions.made.get(pr.html_url)} feature={featureBadge(pr, ctx)} now={ctx.now} />
+        <PrItem
+            pr={pr}
+            session={latestSession(ctx.sessions, "made", pr.html_url)}
+            feature={featureBadge(pr, ctx)}
+            now={ctx.now}
+        />
     );
 }
 

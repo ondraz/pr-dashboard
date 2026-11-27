@@ -110,6 +110,18 @@ export function reviewedStatus(pr: Pick<MyReviewStanding, "myVerdict" | "updated
     return pr.updatedSinceReview ? "updated" : "commented";
 }
 
+/** The reviewed tab's sections in display order, each newest update first; empty ones are left out. */
+export function reviewedGroups<
+    P extends Pick<MyReviewStanding, "myVerdict" | "updatedSinceReview"> & { updated_at: string },
+>(prs: readonly P[]): { status: (typeof REVIEWED_STATUSES)[number]; prs: P[] }[] {
+    return REVIEWED_STATUSES.map((status) => ({
+        status,
+        prs: prs
+            .filter((pr) => reviewedStatus(pr) === status.key)
+            .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)),
+    })).filter((group) => group.prs.length > 0);
+}
+
 /** A re-review needs only what was pushed since the viewer's last review. */
 export function reviewHref(pr: { html_url: string } & Omit<MyReviewStanding, "myVerdict" | "lastReviewAt">): string {
     if (pr.updatedSinceReview && pr.lastReviewSha && pr.headSha) {
