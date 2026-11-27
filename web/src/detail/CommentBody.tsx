@@ -15,7 +15,7 @@ export interface EditableComment {
     body: string;
     bodyHTML: string;
     viewerCanUpdate: boolean;
-    /** A review's summary cannot be deleted. */
+    /** A review's summary and the description cannot be deleted. */
     viewerCanDelete?: boolean;
     viewerCanReact: boolean;
     reactionGroups: readonly ReactionGroupFieldsFragment[] | null;
@@ -25,15 +25,24 @@ export interface EditableComment {
  * A comment's text with its reactions, and, on the reader's own comments, Edit and Delete. An edit in progress
  * is a draft like any other, so it survives a refresh.
  */
-export function CommentBody({ kind, comment }: { kind: CommentKind; comment: EditableComment }) {
+export function CommentBody({
+    kind,
+    comment,
+    emptyText,
+}: {
+    kind: CommentKind;
+    comment: EditableComment;
+    /** Said in place of an empty body. */
+    emptyText?: string;
+}) {
     const { route } = useOpenPr();
     const { canWrite } = useWriteAccess(route);
     const [text, setText, clear] = useDraft(`${draftPrefix(route)}edit:${comment.id}`);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const save = usePrWrite((client, body: string) => editComment(client, kind, comment.id, body));
-    const deletable = kind === "review" ? null : kind;
+    const deletable = kind === "review" || kind === "description" ? null : kind;
     const remove = usePrWrite((client) => {
-        if (!deletable) throw new Error("A review's summary cannot be deleted");
+        if (!deletable) throw new Error("This text cannot be deleted, only edited");
         return deleteComment(client, deletable, comment.id);
     });
     const canEdit = canWrite && comment.viewerCanUpdate;
@@ -65,7 +74,11 @@ export function CommentBody({ kind, comment }: { kind: CommentKind; comment: Edi
 
     return (
         <>
-            {comment.bodyHTML.trim() && <Markdown html={comment.bodyHTML} />}
+            {comment.bodyHTML.trim() ? (
+                <Markdown html={comment.bodyHTML} />
+            ) : (
+                emptyText && <p className="muted">{emptyText}</p>
+            )}
             <div className="comment-footer">
                 <Reactions subjectId={comment.id} groups={comment.reactionGroups} canReact={comment.viewerCanReact} />
                 {(canEdit || canDelete) && (

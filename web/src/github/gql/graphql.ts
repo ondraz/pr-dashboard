@@ -99,6 +99,13 @@ export type MergeableState =
   /** The mergeability of the pull request is still being calculated. */
   | 'UNKNOWN';
 
+/** The possible methods for updating a pull request's head branch with the base branch. */
+export type PullRequestBranchUpdateMethod =
+  /** Update branch via merge */
+  | 'MERGE'
+  /** Update branch via rebase */
+  | 'REBASE';
+
 /** Represents available types of methods to use when merging a pull request. */
 export type PullRequestMergeMethod =
   /** Add all commits from the head branch to the base branch with a merge commit. */
@@ -274,6 +281,106 @@ export type ReviewThreadsPageQuery = { repository: { pullRequest: { reviewThread
                 | { login: string }
                 | { login: string }
                | null } | null> | null } } | null> | null } } | null } | null };
+
+export type PullRequestMergeTextQueryVariables = Exact<{
+  owner: string;
+  name: string;
+  number: number;
+  method: PullRequestMergeMethod;
+}>;
+
+
+export type PullRequestMergeTextQuery = { repository: { pullRequest: { viewerMergeHeadlineText: string, viewerMergeBodyText: string } | null } | null };
+
+export type MergePullRequestMutationVariables = Exact<{
+  pullRequestId: string | number;
+  mergeMethod: PullRequestMergeMethod;
+  commitHeadline?: string | null | undefined;
+  commitBody?: string | null | undefined;
+  expectedHeadOid: string;
+}>;
+
+
+export type MergePullRequestMutation = { mergePullRequest: { pullRequest: { id: string } | null } | null };
+
+export type EnableAutoMergeMutationVariables = Exact<{
+  pullRequestId: string | number;
+  mergeMethod?: PullRequestMergeMethod | null | undefined;
+  commitHeadline?: string | null | undefined;
+  commitBody?: string | null | undefined;
+  expectedHeadOid: string;
+}>;
+
+
+export type EnableAutoMergeMutation = { enablePullRequestAutoMerge: { pullRequest: { id: string } | null } | null };
+
+export type DisableAutoMergeMutationVariables = Exact<{
+  pullRequestId: string | number;
+}>;
+
+
+export type DisableAutoMergeMutation = { disablePullRequestAutoMerge: { pullRequest: { id: string } | null } | null };
+
+export type EnqueuePullRequestMutationVariables = Exact<{
+  pullRequestId: string | number;
+  expectedHeadOid: string;
+}>;
+
+
+export type EnqueuePullRequestMutation = { enqueuePullRequest: { mergeQueueEntry: { position: number } | null } | null };
+
+export type DequeuePullRequestMutationVariables = Exact<{
+  pullRequestId: string | number;
+}>;
+
+
+export type DequeuePullRequestMutation = { dequeuePullRequest: { mergeQueueEntry: { id: string } | null } | null };
+
+export type UpdatePullRequestBranchMutationVariables = Exact<{
+  pullRequestId: string | number;
+  expectedHeadOid: string;
+  updateMethod: PullRequestBranchUpdateMethod;
+}>;
+
+
+export type UpdatePullRequestBranchMutation = { updatePullRequestBranch: { pullRequest: { id: string } | null } | null };
+
+export type MarkReadyForReviewMutationVariables = Exact<{
+  pullRequestId: string | number;
+}>;
+
+
+export type MarkReadyForReviewMutation = { markPullRequestReadyForReview: { pullRequest: { id: string } | null } | null };
+
+export type ConvertToDraftMutationVariables = Exact<{
+  pullRequestId: string | number;
+}>;
+
+
+export type ConvertToDraftMutation = { convertPullRequestToDraft: { pullRequest: { id: string } | null } | null };
+
+export type ClosePullRequestMutationVariables = Exact<{
+  pullRequestId: string | number;
+}>;
+
+
+export type ClosePullRequestMutation = { closePullRequest: { pullRequest: { id: string } | null } | null };
+
+export type UpdatePullRequestMutationVariables = Exact<{
+  pullRequestId: string | number;
+  title?: string | null | undefined;
+  body?: string | null | undefined;
+}>;
+
+
+export type UpdatePullRequestMutation = { updatePullRequest: { pullRequest: { id: string } | null } | null };
+
+export type ReopenPullRequestMutationVariables = Exact<{
+  pullRequestId: string | number;
+}>;
+
+
+export type ReopenPullRequestMutation = { reopenPullRequest: { pullRequest: { id: string } | null } | null };
 
 type ActorFields_Bot_Fragment = { login: string, avatarUrl: string, url: string };
 
@@ -493,6 +600,8 @@ export type ReviewThreadDetailPageFragment = { pageInfo: { hasNextPage: boolean,
 
 export type HeadChecksFragment = { headCommit: { nodes: Array<{ commit: { oid: string, statusCheckRollup: { state: StatusState, contexts: { checkRunCountsByState: Array<{ state: CheckRunState, count: number }> | null, statusContextCountsByState: Array<{ state: StatusState, count: number }> | null } } | null } } | null> | null } };
 
+export type PullRequestManageFieldsFragment = { viewerCanUpdate: boolean, viewerCanUpdateBranch: boolean, viewerCanEnableAutoMerge: boolean, viewerCanDisableAutoMerge: boolean, viewerCanClose: boolean, viewerCanReopen: boolean, isMergeQueueEnabled: boolean, baseRepository: { mergeCommitAllowed: boolean, squashMergeAllowed: boolean, rebaseMergeAllowed: boolean, viewerDefaultMergeMethod: PullRequestMergeMethod } | null };
+
 export type PullRequestProbeFieldsFragment = { updatedAt: string, state: PullRequestState, isDraft: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, mergeQueueEntry: { position: number } | null, headCommit: { nodes: Array<{ commit: { statusCheckRollup: { state: StatusState } | null } } | null> | null } };
 
 export type PullRequestProbeQueryVariables = Exact<{
@@ -511,7 +620,7 @@ export type PullRequestDetailQueryVariables = Exact<{
 }>;
 
 
-export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, baseRefOid: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, viewerCanReact: boolean, changedFiles: number, viewerDidAuthor: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
+export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, number: number, title: string, url: string, state: PullRequestState, isDraft: boolean, createdAt: string, updatedAt: string, baseRefName: string, baseRefOid: string, headRefName: string, isCrossRepository: boolean, body: string, bodyHTML: string, viewerCanReact: boolean, changedFiles: number, viewerDidAuthor: boolean, viewerCanUpdate: boolean, viewerCanUpdateBranch: boolean, viewerCanEnableAutoMerge: boolean, viewerCanDisableAutoMerge: boolean, viewerCanClose: boolean, viewerCanReopen: boolean, isMergeQueueEnabled: boolean, headRefOid: string, mergeable: MergeableState, mergeStateStatus: MergeStateStatus, reviewDecision: PullRequestReviewDecision | null, author:
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
         | { login: string, avatarUrl: string, url: string }
@@ -718,7 +827,7 @@ export type PullRequestDetailQuery = { repository: { pullRequest: { id: string, 
           | { __typename: 'UnpinnedEvent' }
           | { __typename: 'UnsubscribedEvent' }
           | { __typename: 'UserBlockedEvent' }
-         | null> | null }, headCommit: { nodes: Array<{ commit: { oid: string, statusCheckRollup: { state: StatusState, contexts: { checkRunCountsByState: Array<{ state: CheckRunState, count: number }> | null, statusContextCountsByState: Array<{ state: StatusState, count: number }> | null } } | null } } | null> | null } } | null } | null };
+         | null> | null }, baseRepository: { mergeCommitAllowed: boolean, squashMergeAllowed: boolean, rebaseMergeAllowed: boolean, viewerDefaultMergeMethod: PullRequestMergeMethod } | null, headCommit: { nodes: Array<{ commit: { oid: string, statusCheckRollup: { state: StatusState, contexts: { checkRunCountsByState: Array<{ state: CheckRunState, count: number }> | null, statusContextCountsByState: Array<{ state: StatusState, count: number }> | null } } | null } } | null> | null } } | null } | null };
 
 export type PullRequestTimelinePageQueryVariables = Exact<{
   owner: string;
@@ -1552,6 +1661,23 @@ export const HeadChecksFragmentDoc = new TypedDocumentString(`
   }
 }
     `, {"fragmentName":"HeadChecks"}) as unknown as TypedDocumentString<HeadChecksFragment, unknown>;
+export const PullRequestManageFieldsFragmentDoc = new TypedDocumentString(`
+    fragment PullRequestManageFields on PullRequest {
+  viewerCanUpdate
+  viewerCanUpdateBranch
+  viewerCanEnableAutoMerge
+  viewerCanDisableAutoMerge
+  viewerCanClose
+  viewerCanReopen
+  isMergeQueueEnabled
+  baseRepository {
+    mergeCommitAllowed
+    squashMergeAllowed
+    rebaseMergeAllowed
+    viewerDefaultMergeMethod
+  }
+}
+    `, {"fragmentName":"PullRequestManageFields"}) as unknown as TypedDocumentString<PullRequestManageFieldsFragment, unknown>;
 export const PullRequestProbeFieldsFragmentDoc = new TypedDocumentString(`
     fragment PullRequestProbeFields on PullRequest {
   updatedAt
@@ -1641,6 +1767,141 @@ export const ReviewThreadsPageDocument = new TypedDocumentString(`
     }
   }
 }`) as unknown as TypedDocumentString<ReviewThreadsPageQuery, ReviewThreadsPageQueryVariables>;
+export const PullRequestMergeTextDocument = new TypedDocumentString(`
+    query PullRequestMergeText($owner: String!, $name: String!, $number: Int!, $method: PullRequestMergeMethod!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      viewerMergeHeadlineText(mergeType: $method)
+      viewerMergeBodyText(mergeType: $method)
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<PullRequestMergeTextQuery, PullRequestMergeTextQueryVariables>;
+export const MergePullRequestDocument = new TypedDocumentString(`
+    mutation MergePullRequest($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!, $commitHeadline: String, $commitBody: String, $expectedHeadOid: GitObjectID!) {
+  mergePullRequest(
+    input: {
+      pullRequestId: $pullRequestId
+      mergeMethod: $mergeMethod
+      commitHeadline: $commitHeadline
+      commitBody: $commitBody
+      expectedHeadOid: $expectedHeadOid
+    }
+  ) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<MergePullRequestMutation, MergePullRequestMutationVariables>;
+export const EnableAutoMergeDocument = new TypedDocumentString(`
+    mutation EnableAutoMerge($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod, $commitHeadline: String, $commitBody: String, $expectedHeadOid: GitObjectID!) {
+  enablePullRequestAutoMerge(
+    input: {
+      pullRequestId: $pullRequestId
+      mergeMethod: $mergeMethod
+      commitHeadline: $commitHeadline
+      commitBody: $commitBody
+      expectedHeadOid: $expectedHeadOid
+    }
+  ) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<EnableAutoMergeMutation, EnableAutoMergeMutationVariables>;
+export const DisableAutoMergeDocument = new TypedDocumentString(`
+    mutation DisableAutoMerge($pullRequestId: ID!) {
+  disablePullRequestAutoMerge(input: { pullRequestId: $pullRequestId }) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<DisableAutoMergeMutation, DisableAutoMergeMutationVariables>;
+export const EnqueuePullRequestDocument = new TypedDocumentString(`
+    mutation EnqueuePullRequest($pullRequestId: ID!, $expectedHeadOid: GitObjectID!) {
+  enqueuePullRequest(
+    input: { pullRequestId: $pullRequestId, expectedHeadOid: $expectedHeadOid }
+  ) {
+    mergeQueueEntry {
+      position
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<EnqueuePullRequestMutation, EnqueuePullRequestMutationVariables>;
+export const DequeuePullRequestDocument = new TypedDocumentString(`
+    mutation DequeuePullRequest($pullRequestId: ID!) {
+  dequeuePullRequest(input: { id: $pullRequestId }) {
+    mergeQueueEntry {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<DequeuePullRequestMutation, DequeuePullRequestMutationVariables>;
+export const UpdatePullRequestBranchDocument = new TypedDocumentString(`
+    mutation UpdatePullRequestBranch($pullRequestId: ID!, $expectedHeadOid: GitObjectID!, $updateMethod: PullRequestBranchUpdateMethod!) {
+  updatePullRequestBranch(
+    input: {
+      pullRequestId: $pullRequestId
+      expectedHeadOid: $expectedHeadOid
+      updateMethod: $updateMethod
+    }
+  ) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<UpdatePullRequestBranchMutation, UpdatePullRequestBranchMutationVariables>;
+export const MarkReadyForReviewDocument = new TypedDocumentString(`
+    mutation MarkReadyForReview($pullRequestId: ID!) {
+  markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<MarkReadyForReviewMutation, MarkReadyForReviewMutationVariables>;
+export const ConvertToDraftDocument = new TypedDocumentString(`
+    mutation ConvertToDraft($pullRequestId: ID!) {
+  convertPullRequestToDraft(input: { pullRequestId: $pullRequestId }) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<ConvertToDraftMutation, ConvertToDraftMutationVariables>;
+export const ClosePullRequestDocument = new TypedDocumentString(`
+    mutation ClosePullRequest($pullRequestId: ID!) {
+  closePullRequest(input: { pullRequestId: $pullRequestId }) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<ClosePullRequestMutation, ClosePullRequestMutationVariables>;
+export const UpdatePullRequestDocument = new TypedDocumentString(`
+    mutation UpdatePullRequest($pullRequestId: ID!, $title: String, $body: String) {
+  updatePullRequest(
+    input: { pullRequestId: $pullRequestId, title: $title, body: $body }
+  ) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<UpdatePullRequestMutation, UpdatePullRequestMutationVariables>;
+export const ReopenPullRequestDocument = new TypedDocumentString(`
+    mutation ReopenPullRequest($pullRequestId: ID!) {
+  reopenPullRequest(input: { pullRequestId: $pullRequestId }) {
+    pullRequest {
+      id
+    }
+  }
+}
+    `) as unknown as TypedDocumentString<ReopenPullRequestMutation, ReopenPullRequestMutationVariables>;
 export const PullRequestProbeDocument = new TypedDocumentString(`
     query PullRequestProbe($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -1698,6 +1959,7 @@ export const PullRequestDetailDocument = new TypedDocumentString(`
       reactionGroups {
         ...ReactionGroupFields
       }
+      ...PullRequestManageFields
       ...PullRequestProbeFields
       ...HeadChecks
       autoMergeRequest {
@@ -2089,6 +2351,21 @@ fragment HeadChecks on PullRequest {
         }
       }
     }
+  }
+}
+fragment PullRequestManageFields on PullRequest {
+  viewerCanUpdate
+  viewerCanUpdateBranch
+  viewerCanEnableAutoMerge
+  viewerCanDisableAutoMerge
+  viewerCanClose
+  viewerCanReopen
+  isMergeQueueEnabled
+  baseRepository {
+    mergeCommitAllowed
+    squashMergeAllowed
+    rebaseMergeAllowed
+    viewerDefaultMergeMethod
   }
 }
 fragment PullRequestProbeFields on PullRequest {

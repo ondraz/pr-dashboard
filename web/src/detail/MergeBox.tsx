@@ -1,12 +1,16 @@
+import { useWriteAccess } from "../app/writeAccess.tsx";
 import { mergeBoxRows } from "../logic/mergeBox.ts";
 import type { AutoMerge } from "../logic/stacks.ts";
+import { MergeActions } from "./MergeActions.tsx";
 import { useOpenPr } from "./PrContext.tsx";
 
 const TONE_MARK = { ok: "✓", warn: "!", fail: "✕", pending: "●", neutral: "–", merged: "✓" } as const;
 
-/** Whether the PR can merge and what stands in the way, as GitHub's merge box says it. Read-only. */
+/** Whether the PR can merge and what stands in the way, as GitHub's merge box says it, and what lands it. */
 export function MergeBox() {
-    const { pr } = useOpenPr().detail;
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
+    const { canWrite } = useWriteAccess(route);
     const rollup = pr.headCommit.nodes?.[0]?.commit.statusCheckRollup ?? null;
     const autoMerge: AutoMerge | null = pr.autoMergeRequest
         ? {
@@ -44,6 +48,7 @@ export function MergeBox() {
                     {row.detail && <span className="merge-detail">{row.detail}</span>}
                 </div>
             ))}
+            {canWrite && <MergeActions />}
         </section>
     );
 }

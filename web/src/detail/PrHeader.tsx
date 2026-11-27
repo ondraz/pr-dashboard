@@ -1,11 +1,16 @@
+import { useDraft } from "../app/drafts.ts";
+import { useWriteAccess } from "../app/writeAccess.tsx";
+import { editPullRequest } from "../github/manage.ts";
 import { CommentIcon, ConflictIcon, MergeIcon, PrDraftIcon, PrOpenIcon } from "../list/icons.tsx";
 import { External, GitHubLink, MergeBadge, SessionBadge } from "../list/PrRows.tsx";
 import { unresolvedBadge } from "../logic/badges.ts";
+import { draftPrefix, TITLE_SLOT } from "../logic/drafts.ts";
 import type { AutoMerge } from "../logic/stacks.ts";
 import { prUnresolvedSummary } from "../logic/unresolved.ts";
 import { usePrListContext } from "./listContext.ts";
 import { useOpenPr } from "./PrContext.tsx";
 import { usePullRequestStack } from "./usePullRequest.ts";
+import { usePrWrite } from "./useWrite.ts";
 
 const plural = (count: number, one: string) => `${count} ${one}${count === 1 ? "" : "s"}`;
 
@@ -31,6 +36,56 @@ function StatePill({ state, draft }: { state: string; draft: boolean }) {
             {draft ? <PrDraftIcon /> : <PrOpenIcon />}
             {draft ? "Draft" : "Open"}
         </span>
+    );
+}
+
+/** The title, and on a PR the viewer may change, Edit, which keeps a new title as a draft until it is saved. */
+function Title() {
+    const { route, detail } = useOpenPr();
+    const { pr } = detail;
+    const { canWrite } = useWriteAccess(route);
+    const [text, setText, clear] = useDraft(draftPrefix(route) + TITLE_SLOT);
+    const save = usePrWrite((client, title: string) => editPullRequest(client, pr.id, { title }));
+    const editable = canWrite && pr.viewerCanUpdate;
+    if (editable && text !== null) {
+        return (
+            <form
+                className="title-edit"
+                aria-label="Edit title"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    if (text.trim() && !save.isPending) save.mutate(text.trim(), { onSuccess: clear });
+                }}
+            >
+                <input
+                    aria-label="Title"
+                    value={text}
+                    // biome-ignore lint/a11y/noAutofocus: the box opens because the reader asked to edit the title
+                    autoFocus
+                    onChange={(event) => setText(event.target.value)}
+                />
+                <button type="submit" className="primary-btn" disabled={!text.trim() || save.isPending}>
+                    Save
+                </button>
+                <button type="button" className="step-btn" onClick={clear} disabled={save.isPending}>
+                    Cancel
+                </button>
+                {save.error && <p className="error-text">{save.error.message}</p>}
+            </form>
+        );
+    }
+    return (
+        <div className="pr-title-row">
+            <h1 className="pr-heading">
+                {pr.title} <span className="pr-heading-number">#{pr.number}</span>
+                <GitHubLink htmlUrl={pr.url} number={pr.number} />
+            </h1>
+            {editable && (
+                <button type="button" className="step-btn" aria-label="Edit title" onClick={() => setText(pr.title)}>
+                    Edit
+                </button>
+            )}
+        </div>
     );
 }
 
@@ -60,10 +115,7 @@ export function PrHeader() {
 
     return (
         <div className="pr-header">
-            <h1 className="pr-heading">
-                {pr.title} <span className="pr-heading-number">#{pr.number}</span>
-                <GitHubLink htmlUrl={pr.url} number={pr.number} />
-            </h1>
+            <Title />
             <div className="pr-subhead">
                 <StatePill state={pr.state} draft={pr.isDraft} />
                 {position?.stack && (

@@ -25,6 +25,7 @@ export function parseTargetSlot(slot: string): CommentTarget | null {
     return { subject: "line", path, side, line, startLine: startLine === line ? null : startLine };
 }
 
-/** The slots of a comment on the PR itself and of the pending review's summary. */
+/** The slots of a comment on the PR itself, of the pending review's summary and of a new title. */
 export const PR_COMMENT_SLOT = "comment";
 export const REVIEW_SLOT = "review";
+export const TITLE_SLOT = "title";

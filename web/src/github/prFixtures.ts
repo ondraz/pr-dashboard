@@ -186,6 +186,19 @@ export function pullRequestFields(extra: Partial<PullRequestFields> = {}): PullR
         pendingReview: { nodes: [] },
         viewerLatestReview: null,
         reviews: { nodes: [] },
+        viewerCanUpdate: true,
+        viewerCanUpdateBranch: false,
+        viewerCanEnableAutoMerge: true,
+        viewerCanDisableAutoMerge: true,
+        viewerCanClose: true,
+        viewerCanReopen: true,
+        isMergeQueueEnabled: false,
+        baseRepository: {
+            mergeCommitAllowed: true,
+            squashMergeAllowed: true,
+            rebaseMergeAllowed: true,
+            viewerDefaultMergeMethod: "SQUASH",
+        },
         ...extra,
     };
 }

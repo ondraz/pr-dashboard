@@ -14,11 +14,9 @@ import {
 import { labelColor } from "../logic/labels.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { CommentBody } from "./CommentBody.tsx";
-import { Markdown } from "./Markdown.tsx";
 import { MergeBox } from "./MergeBox.tsx";
 import { PrComment } from "./PrComment.tsx";
 import { useOpenPr } from "./PrContext.tsx";
-import { Reactions } from "./Reactions.tsx";
 import { Thread, When, Who } from "./Thread.tsx";
 
 function Card({ header, children }: { header: ReactNode; children: ReactNode }) {
@@ -225,12 +223,18 @@ export function ConversationTab() {
                     </>
                 }
             >
-                {pr.bodyHTML.trim() ? (
-                    <Markdown html={pr.bodyHTML} />
-                ) : (
-                    <p className="muted">No description provided.</p>
-                )}
-                <Reactions subjectId={pr.id} groups={pr.reactionGroups} canReact={pr.viewerCanReact} />
+                <CommentBody
+                    kind="description"
+                    emptyText="No description provided."
+                    comment={{
+                        id: pr.id,
+                        body: pr.body,
+                        bodyHTML: pr.bodyHTML,
+                        viewerCanUpdate: pr.viewerCanUpdate,
+                        viewerCanReact: pr.viewerCanReact,
+                        reactionGroups: pr.reactionGroups,
+                    }}
+                />
             </Card>
             {items.map((item) => (
                 <Item key={itemKey(item)} item={item} route={route} />

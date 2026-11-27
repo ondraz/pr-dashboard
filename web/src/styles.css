@@ -2422,3 +2422,69 @@ button.reaction {
     color: var(--color-text);
     background: var(--color-bg);
 }
+
+.merge-actions {
+    border-top: 1px solid var(--color-border);
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--color-bg-secondary);
+}
+.merge-buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.merge-land,
+.merge-update {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
+.merge-actions select,
+.merge-confirm input,
+.merge-confirm textarea,
+.title-edit input {
+    font: inherit;
+    font-size: 13px;
+    color: var(--color-text);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 3px 6px;
+}
+.merge-to-draft {
+    margin-left: auto;
+    font-size: 12px;
+}
+.merge-confirm {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.merge-confirm textarea {
+    resize: vertical;
+}
+.pr-title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.title-edit {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.title-edit input {
+    flex: 1;
+    min-width: 200px;
+    font-size: 20px;
+    padding: 4px 8px;
+}
+.title-edit .error-text {
+    width: 100%;
+}

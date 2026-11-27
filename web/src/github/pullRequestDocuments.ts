@@ -303,6 +303,25 @@ export const headChecksFragment = graphql(`
     }
 `);
 
+/** What the merge box and the PR's other actions need to know about what the viewer may do. */
+export const pullRequestManageFragment = graphql(`
+    fragment PullRequestManageFields on PullRequest {
+        viewerCanUpdate
+        viewerCanUpdateBranch
+        viewerCanEnableAutoMerge
+        viewerCanDisableAutoMerge
+        viewerCanClose
+        viewerCanReopen
+        isMergeQueueEnabled
+        baseRepository {
+            mergeCommitAllowed
+            squashMergeAllowed
+            rebaseMergeAllowed
+            viewerDefaultMergeMethod
+        }
+    }
+`);
+
 /** The fields whose change means the open PR should be read again. */
 export const pullRequestProbeFragment = graphql(`
     fragment PullRequestProbeFields on PullRequest {
@@ -370,6 +389,7 @@ export const pullRequestDetailQuery = graphql(`
                 reactionGroups {
                     ...ReactionGroupFields
                 }
+                ...PullRequestManageFields
                 ...PullRequestProbeFields
                 ...HeadChecks
                 autoMergeRequest {
