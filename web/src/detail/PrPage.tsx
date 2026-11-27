@@ -118,6 +118,8 @@ export function PrPage() {
             </div>
         );
     } else {
+        // A review started on a PR since closed can still be finished or discarded.
+        const reviewable = open.detail.pr.state === "OPEN" || !!open.detail.pr.pendingReview?.nodes?.length;
         content = (
             <PrContext value={open}>
                 {error && <div className="error">Refresh failed: {error.message}</div>}
@@ -127,7 +129,7 @@ export function PrPage() {
                     route={route}
                     detail={open.detail}
                     actions={
-                        canWrite && open.detail.pr.state === "OPEN" ? (
+                        canWrite && reviewable ? (
                             <ReviewButton open={reviewing} onToggle={() => setReviewing(!reviewing)} />
                         ) : reason?.kind === "token" ? (
                             <span className="muted read-only-note" title="Sign in with the GitHub App to review here">

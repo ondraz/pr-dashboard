@@ -191,7 +191,7 @@ export type ChangeProbeHitsFragment = { issueCount: number, nodes: Array<
     | Record<PropertyKey, never>
    | null> | null };
 
-export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ pullRequestReview: { id: string } | null, author:
+export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
           | { login: string }
           | { login: string }
           | { login: string }
@@ -205,7 +205,7 @@ export type ReviewThreadPageFragment = { pageInfo: { hasNextPage: boolean, endCu
           | { login: string }
          | null } | null> | null } } | null> | null };
 
-export type OutstandingWorkFragment = { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ pullRequestReview: { id: string } | null, author:
+export type OutstandingWorkFragment = { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
             | { login: string }
             | { login: string }
             | { login: string }
@@ -233,7 +233,7 @@ export type ReviewThreadsPageQueryVariables = Exact<{
 }>;
 
 
-export type ReviewThreadsPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ pullRequestReview: { id: string } | null, author:
+export type ReviewThreadsPageQuery = { repository: { pullRequest: { reviewThreads: { pageInfo: { hasNextPage: boolean, endCursor: string | null }, nodes: Array<{ isResolved: boolean, comments: { totalCount: number, nodes: Array<{ state: PullRequestReviewCommentState, pullRequestReview: { id: string } | null, author:
                 | { login: string }
                 | { login: string }
                 | { login: string }
@@ -998,6 +998,7 @@ export const ReviewThreadPageFragmentDoc = new TypedDocumentString(`
     comments(first: 1) {
       totalCount
       nodes {
+        state
         pullRequestReview {
           id
         }
@@ -1047,6 +1048,7 @@ export const OutstandingWorkFragmentDoc = new TypedDocumentString(`
     comments(first: 1) {
       totalCount
       nodes {
+        state
         pullRequestReview {
           id
         }
@@ -1434,6 +1436,7 @@ export const ReviewThreadsPageDocument = new TypedDocumentString(`
     comments(first: 1) {
       totalCount
       nodes {
+        state
         pullRequestReview {
           id
         }

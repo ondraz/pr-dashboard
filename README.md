@@ -113,13 +113,15 @@ lacks a permission), the page hides the actions for that repository and says why
   hunk. **Comment on file** comments on the file as a whole. On the new side, **Suggest a change**
   puts the selected lines in a `suggestion` block to edit. A comment goes into your pending review
   (**Start a review**, then **Add review comment**), which nobody else sees until you submit it, and
-  which shows in the diff marked **Pending**. **Add single comment** posts one at once instead; as
+  which shows in the diff marked **Pending** and counts as unresolved nowhere, the list included.
+  **Add single comment** posts one at once instead; as
   on GitHub, it is offered only while no review is pending. Comments are made on the diff at the
   head commit the page shows, so a commit's or a range's diff takes none
 - **Review changes** (**Finish your review (N)** while comments are pending) opens the summary, with
   **Comment**, **Approve** or **Request changes**. On your own PR only a comment is possible, and a
   comment or a request for changes needs a summary or a pending comment. **Discard review** throws
-  the pending review away, after asking
+  the pending review away, after asking. The button shows on an open PR, and on a closed one while
+  your review of it is still pending
 - **Comment** at the foot of the Conversation tab comments on the PR itself
 - Every text box has **Preview**, which GitHub renders (`POST /markdown`), sanitised like any body
 
