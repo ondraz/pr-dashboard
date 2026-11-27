@@ -1,4 +1,4 @@
-.PHONY: serve stop build codegen test lint format
+.PHONY: serve dev stop build codegen test lint format
 
 PORT ?= 6789
 URL = http://localhost:$(PORT)/
@@ -14,10 +14,10 @@ web/dist/index.html: node_modules/.package-lock.json $(WEB_SOURCES)
 # build the React app into web/dist when its sources changed
 build: web/dist/index.html
 
-# serve the dashboard on localhost (a real origin isolates the stored token from other local files,
-# and the server also tells the page which Claude session made or reviewed each PR)
-serve: node_modules/.package-lock.json
-	@ if lsof -ti:$(PORT) >/dev/null 2>&1; then \
+# build the app if needed and serve it on localhost (a real origin isolates the stored token from
+# other local files, and the server also tells the page which Claude session made or reviewed each PR)
+serve: build
+	@ if lsof -ti tcp:$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
 		echo "Server already running on port $(PORT)"; \
 	else \
 		PORT=$(PORT) node server/main.ts >/dev/null 2>&1 & \
@@ -25,9 +25,13 @@ serve: node_modules/.package-lock.json
 	fi
 	@ open $(URL) 2>/dev/null || xdg-open $(URL) >/dev/null 2>&1 || echo "Open $(URL)"
 
+# the same server with Vite as middleware, for hot reload, in the foreground
+dev: node_modules/.package-lock.json
+	PORT=$(PORT) node server/main.ts --dev
+
 stop:
-	@ if lsof -ti:$(PORT) >/dev/null 2>&1; then \
-		kill $$(lsof -ti:$(PORT)) && echo "Server on port $(PORT) stopped"; \
+	@ if lsof -ti tcp:$(PORT) -sTCP:LISTEN >/dev/null 2>&1; then \
+		kill $$(lsof -ti tcp:$(PORT) -sTCP:LISTEN) && echo "Server on port $(PORT) stopped"; \
 	else \
 		echo "No server running on port $(PORT)"; \
 	fi

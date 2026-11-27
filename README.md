@@ -5,9 +5,9 @@ have access to, grouped by repository. Like [GitHub Pulls](https://github.com/pu
 but grouped per repo, aware of stacked PRs, and able to show one change spread over
 several repositories as a single set.
 
-One static `index.html` that talks to the GitHub API straight from the browser with a token
-you provide, served by a small local Node server that also tells it which Claude session made
-each PR. The page has no build step, and GitHub data never passes through the server.
+A React app that talks to the GitHub API straight from the browser with a token you provide,
+served by a small local Node server that also tells it which Claude session made each PR.
+GitHub data never passes through the server.
 
 ## Features
 
@@ -123,20 +123,25 @@ never leaves the browser except in requests to `api.github.com`.
 ## Running
 
 Needs Node 24 or newer (the version is pinned in `.nvmrc`), which runs the server's TypeScript
-directly. The first `make serve` installs the dependencies with `npm ci`.
+directly. The first `make serve` installs the dependencies with `npm ci`, and every `make serve`
+builds the app into `web/dist` first when its sources changed.
 
 ```bash
 make serve          # serve on http://localhost:6789 and open a browser
 make serve PORT=8080
 make stop           # stop the server
+make dev            # the same server in the foreground, with Vite for hot reload
 ```
 
-The server binds to `127.0.0.1` and serves only the page and `/sessions.json`; any other path
-is a 404.
+The server binds to `127.0.0.1` and serves the built app and `/sessions.json`. A path without a
+file name gets the app's page, so a link into the app survives a reload; any other path that is
+not a file of the build is a 404. The page comes with a strict Content Security Policy: only the
+bundle's own scripts and styles run, it connects only to the server and `api.github.com`, and it
+shows images only from GitHub. Every library is bundled at build time; nothing loads from a CDN.
+Under `make dev` Vite serves the page instead, without that policy, since its hot reload runs
+inline scripts.
 
-Opening `index.html` directly over `file://` also works in Safari, which isolates
-`localStorage` per file. Firefox and Chrome share `localStorage` across all local files,
-so any other local page could read the token there - use the localhost server instead.
+The app needs the server: opening the build over `file://` does not work.
 
 ## Claude sessions
 
@@ -159,8 +164,8 @@ Your own PRs show the session that made them; the two review tabs show the sessi
 reviewed them.
 
 The list is read on every refresh and only answered to a loopback Host (`localhost`,
-`127.0.0.1` or `[::1]`), with no CORS header, so other sites cannot read it. Served any other way (`file://`, a plain
-static server) the request fails quietly and the button is simply absent.
+`127.0.0.1` or `[::1]`), with no CORS header, so other sites cannot read it. Served any other
+way (a plain static server) the request fails quietly and the button is simply absent.
 
 ## Collapsing
 
@@ -206,15 +211,13 @@ make format         # format and fix lint findings with Biome
 pinned against the fictional session files in `server/fixtures/`. Dependencies are pinned
 exactly, and `.npmrc` keeps npm from installing any version less than two weeks old.
 
-`web/` is the React app (Vite, TanStack Query and Router) that replaces `index.html`; see
-[the plan](docs/review-app-plan.md). The list is rebuilt there at parity (`web/src/list/`), and
-the server still serves `index.html` until the next stage switches it over. Until then
-`npx vite` runs the app on its own, without session buttons.
+`web/` is the React app (Vite, TanStack Query and Router); see
+[the plan](docs/review-app-plan.md) for where it is going. `web/src/list/` is the list page.
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
 parsing, the Copilot verdict, unresolved counts, review standing, filters and the list layout -
 as plain TypeScript without React or I/O, each pinned by unit tests.
 
-`web/src/github/` is the GitHub API layer the app will load through: Octokit with REST
+`web/src/github/` is the GitHub API layer the app loads through: Octokit with REST
 pagination, typed GraphQL documents whose types GraphQL Code Generator writes into
 `web/src/github/gql/` from GitHub's published schema (committed; CI fails when they are stale),
 and the loaders for the three tabs. Every GET that returned an ETag is asked for again with

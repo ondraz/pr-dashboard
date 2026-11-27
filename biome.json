@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!index.html", "!**/*.md", "!server/fixtures", "!web/src/github/gql", "!!.claude"]
+    "includes": ["**", "!**/*.md", "!server/fixtures", "!web/src/github/gql", "!!.claude"]
   },
   "formatter": {
     "enabled": true,
