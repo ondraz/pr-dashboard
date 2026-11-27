@@ -205,3 +205,8 @@ export function listLayout<P extends LayoutPr>(
 export function unresolvedTotal(prs: readonly { unresolved?: number }[]): number {
     return prs.reduce((sum, pr) => sum + (pr.unresolved ?? 0), 0);
 }
+
+/** The element id of a cross-repo group, which the by-repo view's badge jumps to. */
+export function featureId(key: string): string {
+    return `feature-${key.replace(/[^a-z0-9]+/gi, "-")}`;
+}

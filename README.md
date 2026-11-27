@@ -206,8 +206,10 @@ make format         # format and fix lint findings with Biome
 pinned against the fictional session files in `server/fixtures/`. Dependencies are pinned
 exactly, and `.npmrc` keeps npm from installing any version less than two weeks old.
 
-`web/` is the React app (Vite, TanStack Query and Router) that replaces `index.html`, which the
-server still serves until the app reaches parity; see [the plan](docs/review-app-plan.md).
+`web/` is the React app (Vite, TanStack Query and Router) that replaces `index.html`; see
+[the plan](docs/review-app-plan.md). The list is rebuilt there at parity (`web/src/list/`), and
+the server still serves `index.html` until the next stage switches it over. Until then
+`npx vite` runs the app on its own, without session buttons.
 `web/src/logic/` holds the dashboard's rules - stack building, cross-repo grouping, ticket
 parsing, the Copilot verdict, unresolved counts, review standing, filters and the list layout -
 as plain TypeScript without React or I/O, each pinned by unit tests.
@@ -218,7 +220,8 @@ pagination, typed GraphQL documents whose types GraphQL Code Generator writes in
 and the loaders for the three tabs. Every GET that returned an ETag is asked for again with
 `If-None-Match`, so an unchanged resource comes back as a 304, which does not count against the
 rate limit, and each response's rate-limit headers are collected per bucket for the page to
-show. Its tests run against a GitHub API mocked with MSW; nothing in them reaches GitHub.
+show. Its tests, and the list's component tests (Testing Library on jsdom), run against a GitHub API
+mocked with MSW; nothing in them reaches GitHub.
 
 ## License
 
