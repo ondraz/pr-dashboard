@@ -190,6 +190,22 @@ describe("landing the PR", () => {
         expect(within(box).queryAllByRole("button")).toEqual([]);
     });
 
+    it("merges at the head the viewer saw when they asked, even if a refresh brought a newer one", async () => {
+        const app = open();
+        const box = await mergeBox();
+        fireEvent.click(within(box).getByRole("button", { name: "Squash and merge" }));
+        const form = await within(box).findByRole("form", { name: "Confirm squash and merge" });
+        await within(form).findByRole("textbox", { name: "Commit headline" });
+
+        fields = { ...fields, headRefOid: "beef0000beef00", title: "Turn the gears, pushed again" };
+        await app.queryClient.invalidateQueries();
+        await screen.findByText("Turn the gears, pushed again", { exact: false });
+        fireEvent.click(within(form).getByRole("button", { name: "Confirm squash and merge" }));
+
+        await waitFor(() => expect(callsOf("MergePullRequest")).toHaveLength(1));
+        expect(callsOf("MergePullRequest")[0]?.expectedHeadOid).toBe(HEAD);
+    });
+
     it("rebases without a message, and says why GitHub refused", async () => {
         mergeError = "Head branch was modified. Review and try the merge again.";
         open();
