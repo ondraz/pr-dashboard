@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { QueryClient } from "@tanstack/react-query";
-import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { graphql as mockGraphql } from "msw/graphql";
 import { HttpResponse, http } from "msw/http";
 import { setupServer } from "msw/node";
@@ -228,6 +228,13 @@ describe("keyboard shortcuts", () => {
         expect(screen.queryByRole("region", { name: "Keyboard shortcuts" })).toBeNull();
     });
 
+    it("still answers keys while a checkbox has the focus", async () => {
+        open("/acme/widgets/pull/12/files");
+        await screen.findByRole("region", { name: "src/gears.ts" });
+        fireEvent.keyDown(screen.getByRole("checkbox", { name: "Hide whitespace" }), { key: "?" });
+        expect(screen.getByRole("region", { name: "Keyboard shortcuts" })).toBeTruthy();
+    });
+
     it("leaves the keys alone while typing", async () => {
         open("/acme/widgets/pull/12");
         const box = await screen.findByRole("textbox", { name: "Add a comment" });
@@ -336,5 +343,130 @@ describe("new since you last opened", () => {
         open("/acme/widgets/pull/12/files");
         await screen.findByRole("region", { name: "src/gears.ts" });
         expect(screen.queryByRole("link", { name: "show the changes since then" })).toBeNull();
+    });
+});
+
+const filesResponse = (files: { filename: string; patch: string; additions: number; deletions: number }[]) =>
+    http.get(`${API}/repos/:owner/:repo/pulls/:number/files`, () =>
+        HttpResponse.json(files.map((file) => ({ status: "modified", ...file }))),
+    );
+
+// The changed lines and the context around them, each as its marker and its text.
+const diffRows = (section: HTMLElement) =>
+    [...section.querySelectorAll('tr[data-state="diff"] .diff-line-content-item')].map((cell) =>
+        cell.textContent?.trimEnd(),
+    );
+
+describe("Hide whitespace", () => {
+    beforeEach(() => {
+        server.use(
+            filesResponse([
+                {
+                    filename: "src/axle.ts",
+                    additions: 1,
+                    deletions: 1,
+                    patch: "@@ -1,3 +1,3 @@\n export function spin() {\n-  return 1;\n+    return 1;\n }",
+                },
+                {
+                    filename: "src/gears.ts",
+                    additions: 2,
+                    deletions: 2,
+                    patch: "@@ -1,3 +1,3 @@\n const teeth = 12;\n-const  ratio = 2;\n-  spin();\n+const ratio = 3;\n+spin();",
+                },
+            ]),
+        );
+    });
+
+    it("leaves out changes to whitespace alone, and remembers the choice", async () => {
+        open("/acme/widgets/pull/12/files");
+        const gears = await screen.findByRole("region", { name: "src/gears.ts" });
+        await waitFor(() => expect(diffRows(gears)).toContain("+spin();"));
+
+        fireEvent.click(screen.getByRole("checkbox", { name: "Hide whitespace" }));
+        const axle = screen.getByRole("region", { name: "src/axle.ts" });
+        expect(within(axle).getByText("Only whitespace changed.")).toBeTruthy();
+        await waitFor(() => expect(diffRows(gears)).not.toContain("+spin();"));
+        expect(diffRows(gears)).toContain("+const ratio = 3;");
+        expect(diffRows(gears)).toContain(" spin();");
+        expect(localStorage.getItem("diff_whitespace")).toBe("hide");
+
+        cleanup();
+        open("/acme/widgets/pull/12/files");
+        expect(
+            await within(await screen.findByRole("region", { name: "src/axle.ts" })).findByText(
+                "Only whitespace changed.",
+            ),
+        ).toBeTruthy();
+        expect((screen.getByRole("checkbox", { name: "Hide whitespace" }) as HTMLInputElement).checked).toBe(true);
+    });
+});
+
+describe("a very long diff", () => {
+    const PATHS = ["a.ts", "b.ts", "c.ts", "d.ts", "e.ts", "f.ts"].map((name) => `src/${name}`);
+    const rows = Array.from({ length: 350 }, (_, n) => `+row ${n}`).join("\n");
+    const watched = new Map<Element, IntersectionObserverCallback>();
+    const reveal = (path: string) => {
+        const section = screen.getByRole("region", { name: path });
+        act(() =>
+            watched.get(section)?.(
+                [{ isIntersecting: true, target: section } as unknown as IntersectionObserverEntry],
+                {} as IntersectionObserver,
+            ),
+        );
+    };
+
+    beforeEach(() => {
+        watched.clear();
+        globalThis.IntersectionObserver = class {
+            readonly #callback: IntersectionObserverCallback;
+            constructor(callback: IntersectionObserverCallback) {
+                this.#callback = callback;
+            }
+            observe(element: Element) {
+                watched.set(element, this.#callback);
+            }
+            disconnect() {
+                for (const [element, callback] of watched) if (callback === this.#callback) watched.delete(element);
+            }
+        } as unknown as typeof IntersectionObserver;
+        server.use(
+            filesResponse(
+                PATHS.map((filename) => ({
+                    filename,
+                    additions: 350,
+                    deletions: 0,
+                    patch: `@@ -0,0 +1,350 @@\n${rows}`,
+                })),
+            ),
+        );
+        threads = [
+            reviewThread("T_1", "PRR_1", [{ login: "bob", bodyHTML: "<p>Why 3?</p>" }], { path: "src/d.ts", line: 3 }),
+        ];
+    });
+    afterEach(() => {
+        Reflect.deleteProperty(globalThis, "IntersectionObserver");
+    });
+
+    it("draws each file only once it comes near the window", async () => {
+        open("/acme/widgets/pull/12/files");
+        const first = await screen.findByRole("region", { name: "src/a.ts" });
+        expect(document.querySelectorAll(".file-placeholder")).toHaveLength(PATHS.length);
+        expect(diffRows(first)).toEqual([]);
+
+        reveal("src/a.ts");
+        await waitFor(() => expect(diffRows(first)).toContain("+row 0"));
+        expect(document.querySelectorAll(".file-placeholder")).toHaveLength(PATHS.length - 1);
+    });
+
+    it("steps with n to a file whose threads are not drawn yet, then into them", async () => {
+        open("/acme/widgets/pull/12/files");
+        await screen.findByRole("region", { name: "src/d.ts" });
+        press("n");
+        expect(document.activeElement?.getAttribute("aria-label")).toBe("Collapse src/d.ts");
+
+        reveal("src/d.ts");
+        await screen.findByText("Why 3?");
+        press("n");
+        expect(document.activeElement).toBe(screen.getByText("Why 3?").closest("details")?.querySelector("summary"));
     });
 });

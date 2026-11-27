@@ -19,10 +19,11 @@ import {
 } from "../logic/diff.ts";
 import type { PrRoute } from "../logic/prRoute.ts";
 import { type CommentTarget, type DiffSide, lineTarget, type PatchLines, patchLines } from "../logic/review.ts";
+import { hideWhitespace } from "../logic/whitespace.ts";
 import { Annotation } from "./Annotation.tsx";
 import { CommentComposer } from "./CommentComposer.tsx";
 import { Thread } from "./Thread.tsx";
-import { useFileText } from "./useDiff.ts";
+import { useFileText, useNearViewport } from "./useDiff.ts";
 
 export type DiffMode = "unified" | "split";
 
@@ -46,6 +47,10 @@ export interface FileDiffProps {
     /** The commit the diff's new side is at. */
     headOid: string;
     mode: DiffMode;
+    /** Leave out changes to whitespace alone, as `git diff -w` does. */
+    whitespaceHidden: boolean;
+    /** Draw the hunks only once the file comes near the window, for a diff too long to draw at once. */
+    lazy: boolean;
     theme: "light" | "dark";
     collapsed: boolean;
     onToggle: () => void;
@@ -185,6 +190,22 @@ function LineExtrasView({ data, lines }: { data: LineExtras | undefined; lines: 
     );
 }
 
+// About one row of the diff per line of its patch, so the page keeps its length while files are drawn.
+const ROW_HEIGHT = 20;
+const MAX_PLACEHOLDER = 20_000;
+
+/** Where a file's hunks will be drawn once it comes near the window. */
+function FilePlaceholder({ file }: { file: ChangedFile }) {
+    const rows = file.patch ? file.patch.split("\n").length : file.additions + file.deletions;
+    return (
+        <div
+            className="file-placeholder"
+            style={{ height: Math.min(rows * ROW_HEIGHT, MAX_PLACEHOLDER) }}
+            aria-hidden="true"
+        />
+    );
+}
+
 /** One file of the diff: its header, its file-level threads, and its hunks with their threads unless collapsed. */
 export function FileDiff(props: FileDiffProps) {
     const {
@@ -201,10 +222,17 @@ export function FileDiff(props: FileDiffProps) {
         composers,
         onComment,
     } = props;
-    const { viewed, onViewed } = props;
+    const { viewed, onViewed, whitespaceHidden, lazy } = props;
     const [wantsContext, setWantsContext] = useState(false);
-    const body = collapsed ? null : bodyOf(props);
-    const hunks = body && "hunks" in body ? body.hunks : null;
+    const [near, observe] = useNearViewport(lazy);
+    const found = collapsed || !near ? null : bodyOf(props);
+    const changed = found && "hunks" in found ? found.hunks : null;
+    const shown = useMemo(
+        () => (changed !== null && whitespaceHidden ? hideWhitespace(changed) : changed),
+        [changed, whitespaceHidden],
+    );
+    const body: Body | null = shown === "" ? { note: "Only whitespace changed." } : shown ? { hunks: shown } : found;
+    const hunks = shown || null;
     const expandable = hunks !== null && canExpandContext(file);
     const text = useFileText(route, file.path, headOid, expandable && wantsContext);
     const diffFile = useDiffFile(file, hunks, theme, text.data);
@@ -230,7 +258,9 @@ export function FileDiff(props: FileDiffProps) {
     return (
         <section
             id={fileAnchor(file.path)}
+            ref={observe}
             data-path={file.path}
+            data-undrawn-threads={!collapsed && !near && threads?.count ? "" : undefined}
             className={`file-diff${collapsed ? " collapsed" : ""}`}
             aria-label={file.path}
         >
@@ -310,6 +340,7 @@ export function FileDiff(props: FileDiffProps) {
                     </label>
                 )}
             </div>
+            {!collapsed && !near && <FilePlaceholder file={file} />}
             {body && (
                 <div className="file-body">
                     {text.error && <Note>The file could not be read for context: {text.error.message}</Note>}

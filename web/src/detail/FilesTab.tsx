@@ -16,6 +16,7 @@ import {
     type ChangedFile,
     type DiffSpec,
     diffHead,
+    drawsLazily,
     fileAnchor,
     filterFiles,
     isLargeDiff,
@@ -40,6 +41,7 @@ import { prQueryKey, usePullRequestChecks, usePullRequestCommits, useViewedFiles
 import { usePrWrite } from "./useWrite.ts";
 
 const MODES: readonly DiffMode[] = ["unified", "split"];
+const WHITESPACE = ["show", "hide"] as const;
 
 function toggled(set: ReadonlySet<string>, key: string, on: boolean): Set<string> {
     const next = new Set(set);
@@ -183,6 +185,7 @@ export function FilesTab() {
     const { data, error } = useDiffFiles(route, spec, pr.changedFiles);
     const files = data?.files;
     const [mode, setMode] = usePersistedChoice<DiffMode>("diff_view", MODES, "unified");
+    const [whitespace, setWhitespace] = usePersistedChoice("diff_whitespace", WHITESPACE, "show");
     const theme = useColorScheme();
     const [filter, setFilter] = useState("");
     // The reader's own folding, over the default of folding the files they marked as viewed.
@@ -253,6 +256,7 @@ export function FilesTab() {
     const shown = useMemo(() => filterFiles(files ?? [], filter), [files, filter]);
     const tree = useMemo(() => buildFileTree(shown), [shown]);
     const ordered = useMemo(() => treeOrder(tree), [tree]);
+    const lazy = useMemo(() => drawsLazily(ordered), [ordered]);
     // Thread lines belong to the PR's whole diff, so only that view places them.
     const placed = useMemo(
         () =>
@@ -316,6 +320,14 @@ export function FilesTab() {
                         >
                             {someCollapsed ? "Expand all" : "Collapse all"}
                         </button>
+                        <label className="files-whitespace">
+                            <input
+                                type="checkbox"
+                                checked={whitespace === "hide"}
+                                onChange={(event) => setWhitespace(event.target.checked ? "hide" : "show")}
+                            />
+                            Hide whitespace
+                        </label>
                         <fieldset className="segmented" aria-label="Diff view">
                             {MODES.map((choice) => (
                                 <button
@@ -364,6 +376,8 @@ export function FilesTab() {
                                 file={file}
                                 headOid={headOid}
                                 mode={mode}
+                                whitespaceHidden={whitespace === "hide"}
+                                lazy={lazy}
                                 theme={theme}
                                 collapsed={isCollapsed(file.path)}
                                 onToggle={() => fold([file.path], !isCollapsed(file.path))}
