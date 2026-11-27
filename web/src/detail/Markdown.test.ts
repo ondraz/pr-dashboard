@@ -17,6 +17,15 @@ describe("sanitizeHtml", () => {
         );
     });
 
+    it("drops forms, keeping a task list's checkboxes", () => {
+        expect(
+            sanitizeHtml(
+                '<form action="/auth/sign-out" method="post"><button formaction="/auth/start">Go</button></form>' +
+                    '<input type="checkbox" disabled="" checked="">',
+            ),
+        ).toBe('<button>Go</button><input type="checkbox" disabled="" checked="">');
+    });
+
     it("drops javascript: links", () => {
         expect(sanitizeHtml('<a href="javascript:steal()">x</a>')).toBe("<a>x</a>");
     });

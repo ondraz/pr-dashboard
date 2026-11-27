@@ -6,6 +6,17 @@ const ListEntryContext = createContext<RefObject<number | null> | null>(null);
 /** Remembers which entry of this tab's history last showed the list. */
 export function ListEntryProvider({ children }: { children: ReactNode }) {
     const entry = useRef<number | null>(null);
+    const router = useRouter();
+    // A push at or below the list's entry drops it from history, so the way back is a fresh list.
+    useEffect(
+        () =>
+            router.history.subscribe(({ location, action }) => {
+                if (action.type === "PUSH" && entry.current !== null && location.state.__TSR_index <= entry.current) {
+                    entry.current = null;
+                }
+            }),
+        [router],
+    );
     return <ListEntryContext value={entry}>{children}</ListEntryContext>;
 }
 

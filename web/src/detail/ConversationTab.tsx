@@ -169,7 +169,9 @@ function eventText(event: EventNode): ReactNode {
         case "ReviewRequestRemovedEvent":
             return <>removed the review request for {reviewerName(event.requestedReviewer)}</>;
         case "ReviewDismissedEvent":
-            return <>dismissed {event.dismissedReview?.author?.login ?? "a"}'s review</>;
+            return (
+                <>dismissed {event.dismissedReview?.author ? `${event.dismissedReview.author.login}'s` : "a"} review</>
+            );
         case "LabeledEvent":
             return (
                 <>

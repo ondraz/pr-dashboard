@@ -427,6 +427,24 @@ describe("PR page", () => {
         expect(router.history.location.state.__TSR_index).toBe(0);
     });
 
+    it("goes to a fresh list once the list's history entry was replaced", async () => {
+        const { router } = open("/acme/widgets/pull/12");
+        await heading();
+        fireEvent.click(screen.getByRole("link", { name: "Pull requests" }));
+        await screen.findByRole("tab", { name: /My PRs/ });
+        router.history.back();
+        await heading();
+        // Opening a tab now takes the list's place in history.
+        fireEvent.click(screen.getByRole("link", { name: /Commits/ }));
+        await screen.findByText(/Commits on/);
+        fireEvent.click(screen.getByRole("link", { name: "Conversation" }));
+        await screen.findByText("Turns them.");
+
+        fireEvent.click(screen.getByRole("link", { name: "Pull requests" }));
+        await screen.findByRole("tab", { name: /My PRs/ });
+        expect(router.state.location.pathname).toBe("/");
+    });
+
     it("goes to the list from a PR opened by its link", async () => {
         const { router } = open("/acme/widgets/pull/12");
         await heading();

@@ -10,9 +10,12 @@ DOMPurify.addHook("afterSanitizeAttributes", (node) => {
     }
 });
 
-/** `style` attributes are dropped: the page's CSP would block them anyway. */
+/**
+ * `style` attributes are dropped, as the page's CSP would block them anyway, and so are forms, which
+ * would post to this server as the page itself.
+ */
 export function sanitizeHtml(html: string): string {
-    return DOMPurify.sanitize(html, { FORBID_ATTR: ["style"] });
+    return DOMPurify.sanitize(html, { FORBID_TAGS: ["form"], FORBID_ATTR: ["style", "form", "formaction"] });
 }
 
 /** HTML GitHub rendered from Markdown (a `bodyHTML`), sanitised again. */
